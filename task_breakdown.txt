@@ -1,0 +1,519 @@
+Complaint Ticketing System - Team Task Breakdown
+===============================================
+
+How the full project should work
+--------------------------------
+We are building a complaint / ticketing system with 3 roles:
+- user
+- agent
+- admin
+
+High-level working
+------------------
+1. A user registers and logs in.
+2. The user creates a complaint/ticket.
+3. The system assigns priority, category, status, and SLA due date.
+4. The user sees only their own tickets in the user dashboard.
+5. Agents log in and see only tickets assigned to them in the agent dashboard.
+6. Agents can update ticket status and add comments on the tickets they manage.
+7. Admin logs in and sees all tickets, all users, assigned agents, escalations, and dashboard reports.
+8. If a ticket crosses the SLA due date and is still unresolved, escalation logic marks it as escalated.
+9. Users should mainly track tickets using ticket number, while the backend internally uses ticket id.
+
+How accounts should work in the final UI
+----------------------------------------
+In the final project, not everyone should be able to become an admin or agent from the public UI.
+
+Recommended final flow:
+- public registration should create only normal user accounts
+- agent and admin accounts should be created only by admin or seeded manually in the database
+- later, if needed, we can add an admin-only screen to create agent/admin accounts
+
+Recommended rule:
+- register page -> only user role
+- admin/agent role creation -> admin-controlled only
+
+For now in backend testing, role can still be passed during registration because the system is under development.
+and i have created a create_user.py script to safely create agent/admin accounts directly when the whole project is completed
+
+What each dashboard should show
+-------------------------------
+User dashboard
+- only that user's tickets
+- ticket number
+- title
+- category
+- priority
+- status
+- due date
+- escalated/not escalated
+- comments/history for their own tickets
+
+Agent dashboard
+- only tickets assigned to that agent
+- ticket number
+- title
+- user who raised the ticket
+- status
+- priority
+- category
+- due date
+- overdue/escalated flags
+- comments/history
+
+Admin dashboard
+- all tickets
+- user details
+- assigned agent
+- ticket id and ticket number
+- status breakdown
+- priority breakdown
+- overdue/escalated tickets
+- reports and aging metrics
+
+Important design note
+---------------------
+- users should mainly see ticket_number, not raw ticket_id
+- agents may also mostly work with ticket_number in UI
+- admin can see both ticket_number and ticket_id if needed for internal management
+- frontend can keep internal ids hidden while still using them in API calls
+
+
+Project summary
+---------------
+We are building a complaint / ticketing system with:
+- JWT authentication
+- role-based access
+- ticket creation and workflow
+- SLA tracking and escalation
+- agent/admin dashboards
+- comments and status history
+- reports, search, ticket aging, frontend, and deployment
+
+Current backend base
+--------------------
+Backend stack currently used:
+- FastAPI
+- SQLAlchemy
+- Azure SQL
+- JWT auth
+
+Current key backend files:
+- backend/app/main.py
+- backend/app/core/config.py
+- backend/app/core/database.py
+- backend/app/core/dependencies.py
+- backend/app/core/models.py
+- backend/app/core/security.py
+- backend/app/routes/auth.py
+- backend/app/routes/tickets.py
+- backend/app/routes/comments.py
+- backend/app/schemas/user_schema.py
+- backend/app/schemas/ticket_schema.py
+- backend/app/schemas/comment_schema.py
+- backend/app/services/auth_service.py
+- backend/app/services/ticket_service.py
+- backend/app/services/comment_service.py
+- backend/app/services/sla_service.py
+- backend/sql/init_escalation_proc.sql
+
+
+1. Himanshu Kumar
+===========================
+My owned user stories
+---------------------
+- US-01 User Login
+- US-02 Create Ticket
+- US-03 Priority & Category
+- US-04 Ticket Status Flow
+- US-05 SLA Calculation
+- US-06 Escalation Logic
+
+What I have already created
+---------------------------
+Authentication
+- register API
+- login API
+- Swagger token login API
+- get current user API
+- JWT generation and validation
+- role dependency helpers
+
+Ticketing
+- create ticket API
+- list tickets API
+- get ticket by ticket number API for users
+- get ticket by ticket id API for admin/agent
+- ticket status update API
+- SLA due date calculation
+- escalation stored procedure execution API
+
+Comments
+- comment table/model base
+- add comment API
+- get comments API
+
+Database
+- Azure SQL connection setup
+- SQLAlchemy models for users, tickets, comments
+- stored procedure SQL file for escalation
+- internal script to create user/agent/admin accounts safely
+
+APIs I have created
+--------------
+- POST /auth/register
+- POST /auth/login
+- POST /auth/token
+- GET /auth/me
+- POST /tickets/
+- GET /tickets/
+- GET /tickets/number/{ticket_number}
+- GET /tickets/{ticket_id}
+- PATCH /tickets/{ticket_id}/status
+- POST /tickets/escalation/run
+- GET /tickets/{ticket_id}/comments
+- POST /tickets/{ticket_id}/comments
+
+Files I have created/updated
+------------------------------
+- backend/app/main.py
+- backend/app/core/config.py
+- backend/app/core/database.py
+- backend/app/core/dependencies.py
+- backend/app/core/models.py
+- backend/app/core/security.py
+- backend/app/routes/auth.py
+- backend/app/routes/tickets.py
+- backend/app/routes/comments.py
+- backend/app/schemas/user_schema.py
+- backend/app/schemas/ticket_schema.py
+- backend/app/schemas/comment_schema.py
+- backend/app/services/auth_service.py
+- backend/app/services/ticket_service.py
+- backend/app/services/comment_service.py
+- backend/app/services/sla_service.py
+- backend/create_user.py
+- backend/requirements.txt
+- backend/.env
+- backend/sql/init_escalation_proc.sql
+
+things i still need to verify
+--------------------------
+- escalation stored procedure runs correctly on overdue tickets
+- role restrictions behave correctly for user/agent/admin
+- comments visibility is correct for user ownership
+- ticket number based lookup works smoothly with frontend integration
+
+
+2. Gunank Kaushal
+=================
+Your owned user stories
+-----------------------
+- US-07 Agent Dashboard
+- US-08 Admin Dashboard
+- US-09 Ticket Comments
+- US-10 Status History
+- US-11 Overdue Tickets Report
+- US-12 Ticket Search/Filter
+
+Important note
+--------------
+I already started the backend base for comments because comments were needed for the system flow.
+You should extend and finalize the full comments/history/report/dashboard side instead of rebuilding it.
+
+US-07 Agent Dashboard
+---------------------
+What you need to build:
+- API to show tickets assigned to the current agent
+- API for agent metrics
+- API for today's/open/in-progress/overdue assigned tickets
+
+Suggested APIs:
+- GET /agent/dashboard/summary
+- GET /agent/tickets
+- GET /agent/tickets/overdue
+
+Suggested files to create/update:
+- create backend/app/routes/agent_dashboard.py
+- create backend/app/services/agent_dashboard_service.py
+- optionally create backend/app/schemas/dashboard_schema.py
+- update backend/app/main.py to include the new router
+
+Likely data needed:
+- assigned_to
+- status
+- due_date
+- is_escalated
+
+US-08 Admin Dashboard
+---------------------
+What you need to build:
+- API to show all-ticket metrics
+- ticket counts by status
+- ticket counts by priority
+- SLA breached counts
+- user/agent counts if needed
+
+Suggested APIs:
+- GET /admin/dashboard/summary
+- GET /admin/dashboard/status-breakdown
+- GET /admin/dashboard/priority-breakdown
+- GET /admin/dashboard/sla-overview
+
+Suggested files:
+- create backend/app/routes/admin_dashboard.py
+- create backend/app/services/admin_dashboard_service.py
+- optionally reuse backend/app/schemas/dashboard_schema.py
+- update backend/app/main.py
+
+US-09 Ticket Comments
+---------------------
+What you need to build:
+- finalize comment business rules
+- decide whether user can comment or only admin/agent can comment
+- optionally add update/delete comment if required by the team
+- optionally join comments with author name/email in response
+
+Already present:
+- backend/app/routes/comments.py
+- backend/app/services/comment_service.py
+- backend/app/schemas/comment_schema.py
+- backend/app/core/models.py
+
+What you should update:
+- backend/app/routes/comments.py
+- backend/app/services/comment_service.py
+- backend/app/schemas/comment_schema.py
+- backend/app/core/models.py if comment metadata is expanded
+
+Possible extra APIs:
+- GET /tickets/{ticket_id}/comments
+- POST /tickets/{ticket_id}/comments
+- PATCH /comments/{comment_id}
+- DELETE /comments/{comment_id}
+
+US-10 Status History
+--------------------
+What you need to build:
+- track every ticket status change in a history table
+- store old status, new status, changed_by, changed_at
+- implement DB trigger or DB-side history logging
+
+Recommended DB objects:
+- new table: ticket_status_history
+- trigger: trg_ticket_status_history
+
+Suggested files:
+- update backend/app/core/models.py
+- create backend/sql/status_history.sql
+- optionally create backend/app/routes/history.py
+- optionally create backend/app/services/history_service.py
+- update backend/app/main.py if API is added
+
+Possible API:
+- GET /tickets/{ticket_id}/history
+
+US-11 Overdue Tickets Report
+----------------------------
+What you need to build:
+- report of tickets whose due_date is passed and not closed
+- SQL view for overdue tickets
+- API to fetch overdue report
+
+Recommended DB objects:
+- SQL view: vw_overdue_tickets
+
+Suggested files:
+- create backend/sql/overdue_report_view.sql
+- create backend/app/routes/reports.py
+- create backend/app/services/report_service.py
+- optionally create backend/app/schemas/report_schema.py
+- update backend/app/main.py
+
+Possible APIs:
+- GET /reports/overdue-tickets
+- GET /reports/overdue-tickets/count
+
+US-12 Ticket Search/Filter
+--------------------------
+What you need to build:
+- filter by status
+- filter by priority
+- filter by category
+- filter by ticket number
+- maybe date range filter
+
+Suggested API:
+- GET /tickets/search?status=&priority=&category=&ticket_number=
+
+Suggested files:
+- update backend/app/routes/tickets.py or create backend/app/routes/search.py
+- update backend/app/services/ticket_service.py or create backend/app/services/search_service.py
+- optionally create backend/app/schemas/search_schema.py
+
+
+3. Arya Gupta
+=============
+Your owned user stories
+-----------------------
+- US-13 Ticket Aging
+- US-14 Role-Based Access
+- US-15 React UI
+- US-16 Azure Deployment
+
+Important note
+--------------
+Basic RBAC is already partially present in backend.
+You should finalize and standardize the complete role-based access layer for the whole project, including future routes.
+
+US-13 Ticket Aging
+------------------
+What you need to build:
+- SQL query using datediff/window logic for ticket age
+- maybe age buckets
+- aging report for admin dashboard/reporting
+
+Recommended DB objects:
+- SQL query or SQL view: vw_ticket_aging
+
+Suggested files:
+- create backend/sql/ticket_aging.sql
+- create backend/app/routes/reports.py or backend/app/routes/analytics.py
+- create backend/app/services/aging_service.py
+- optionally create backend/app/schemas/report_schema.py
+- update backend/app/main.py
+
+Possible APIs:
+- GET /reports/ticket-aging
+- GET /reports/ticket-aging/summary
+
+US-14 Role-Based Access
+-----------------------
+What you need to build:
+- review every route and make access rules consistent
+- define exact permissions for user, agent, admin
+- maybe centralize permissions/constants
+
+Suggested files:
+- update backend/app/core/dependencies.py
+- create backend/app/core/permissions.py
+- update backend/app/routes/auth.py
+- update backend/app/routes/tickets.py
+- update backend/app/routes/comments.py
+- update any new dashboard/report routes
+
+Possible tasks:
+- add reusable permission guards
+- restrict create ticket to user only if we decide that
+- restrict comments or history access more clearly
+- enforce role rules on all future endpoints
+
+US-15 React UI
+--------------
+What you need to build:
+- frontend login/register pages
+- user ticket creation page
+- user ticket list and ticket detail/comments page
+- agent dashboard
+- admin dashboard
+- report pages
+
+Suggested frontend structure:
+- create frontend/src/pages/Login.jsx
+- create frontend/src/pages/Register.jsx
+- create frontend/src/pages/UserDashboard.jsx
+- create frontend/src/pages/TicketDetails.jsx
+- create frontend/src/pages/AgentDashboard.jsx
+- create frontend/src/pages/AdminDashboard.jsx
+- create frontend/src/services/api.js
+- create frontend/src/components/TicketCard.jsx
+- create frontend/src/components/CommentList.jsx
+- create frontend/src/components/TicketFilters.jsx
+
+Frontend should consume these backend APIs:
+- /auth/register
+- /auth/login or /auth/token
+- /auth/me
+- /tickets/
+- /tickets/number/{ticket_number}
+- /tickets/{ticket_id}
+- /tickets/{ticket_id}/status
+- /tickets/{ticket_id}/comments
+- dashboard/report APIs created by Gunank and Arya
+
+US-16 Azure Deployment
+----------------------
+What you need to build:
+- deploy backend to Azure App Service or equivalent
+- deploy frontend
+- configure Azure SQL environment variables
+- production CORS/config setup
+
+Suggested files:
+- create deployment docs in README.md
+- create backend/startup command notes
+- create frontend build/deploy config
+- add production env handling in backend/app/core/config.py
+
+Possible tasks:
+- add CORS middleware in backend/app/main.py
+- prepare .env.example
+- configure Azure app settings
+- test deployed app with live DB
+
+
+Recommended future backend files/folders
+========================================
+These will be useful as the project grows:
+- backend/app/routes/agent_dashboard.py
+- backend/app/routes/admin_dashboard.py
+- backend/app/routes/reports.py
+- backend/app/services/agent_dashboard_service.py
+- backend/app/services/admin_dashboard_service.py
+- backend/app/services/report_service.py
+- backend/app/services/aging_service.py
+- backend/app/core/permissions.py
+- backend/app/schemas/dashboard_schema.py
+- backend/app/schemas/report_schema.py
+- backend/sql/status_history.sql
+- backend/sql/overdue_report_view.sql
+- backend/sql/ticket_aging.sql
+
+
+Suggested role behavior for the final project
+=============================================
+User
+- register/login
+- create ticket
+- view own tickets
+- view own ticket by ticket number
+- view own comments/history
+
+Agent
+- login
+- view assigned tickets
+- update ticket status
+- add comments
+- view history/comments for managed tickets
+
+Admin
+- login
+- view all tickets
+- update any ticket
+- run escalation
+- add comments
+- see dashboards and reports
+- access ticket by internal id
+
+
+Final note
+==========
+I have implemented my core backend stories already.
+Please build on the current backend instead of replacing it.
+Before adding new routes, reuse:
+- backend/app/core/models.py
+- backend/app/core/dependencies.py
+- backend/app/routes/tickets.py
+- backend/app/routes/comments.py
+- backend/app/services/ticket_service.py
+- backend/app/services/comment_service.py
