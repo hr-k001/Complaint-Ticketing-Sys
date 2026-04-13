@@ -9,6 +9,7 @@ __pycache__/
 # Env files
 .env
 *.env
+*.db
 
 # ======================
 # Node / Frontend

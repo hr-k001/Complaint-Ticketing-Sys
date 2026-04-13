@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_roles
 from app.core.models import User
+from app.core.models import Ticket
 from app.schemas.ticket_schema import TicketCreate, TicketResponse, TicketStatusUpdate
 from app.schemas.user_schema import UserRole
 from app.services.ticket_service import (
@@ -67,9 +68,11 @@ def update_status(
     return update_ticket_status(db, ticket_id, payload, current_user)
 
 
+
 @router.post(
     "/escalation/run",
     dependencies=[Depends(require_roles(UserRole.ADMIN))],
 )
 def execute_escalation(db: Session = Depends(get_db)):
+    return run_escalation(db)
     return run_escalation(db)

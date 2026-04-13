@@ -36,3 +36,10 @@ def list_comments(db: Session, ticket_id: str, current_user: User) -> list[Comme
     _get_ticket_for_comments(db, ticket_id, current_user)
     stmt = select(Comment).where(Comment.ticket_id == ticket_id).order_by(Comment.created_at.asc())
     return list(db.scalars(stmt).all())
+
+def delete_comment(db, comment_id):
+    comment = db.query(Comment).filter(Comment.id == comment_id).first()
+    db.delete(comment)
+    db.commit()
+
+    

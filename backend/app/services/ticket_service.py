@@ -97,6 +97,36 @@ def update_ticket_status(
         ticket.closed_at = datetime.utcnow()
     db.commit()
     db.refresh(ticket)
+def update_ticket_status(db: Session, ticket_id: str, payload: TicketStatusUpdate, current_user: User):
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    current_status = TicketStatus(ticket.status)   
+    next_status = payload.status                   
+
+    # same status check
+    if next_status == current_status:
+        return ticket
+
+    # validate transition
+    if next_status not in ALLOWED_STATUS_TRANSITIONS[current_status]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid status transition from {current_status.value} to {next_status.value}",
+        )
+
+    # update
+    ticket.status = next_status.value
+    ticket.updated_at = datetime.utcnow()
+
+    if next_status == TicketStatus.CLOSED:
+        ticket.closed_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(ticket)
+
     return ticket
 
 
@@ -118,3 +148,15 @@ def run_escalation(db: Session) -> dict[str, int]:
         )
     ) or 0
     return {"escalated_tickets": max(after_count - before_count, 0)}
+
+
+def create_ticket_history(db: Session, ticket_id: str, old_status: TicketStatus, new_status: TicketStatus) -> None:
+    from app.core.models import TicketHistory
+    history = TicketHistory(
+        ticket_id=ticket_id,
+        old_status=old_status,
+        new_status=new_status,
+        changed_at=datetime.utcnow()
+    )
+    db.add(history)
+    db.commit()

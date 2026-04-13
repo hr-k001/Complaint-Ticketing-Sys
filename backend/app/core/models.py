@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
+from sqlalchemy import Column, Integer,Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -55,3 +56,12 @@ class Comment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
     ticket = relationship("Ticket", back_populates="comments")
+
+class TicketHistory(Base):
+    __tablename__ = "ticket_history"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticket_id: Mapped[str] = mapped_column(ForeignKey("tickets.id"))
+    old_status: Mapped[str] = mapped_column(String(50))
+    new_status: Mapped[str] = mapped_column(String(50))
+    changed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

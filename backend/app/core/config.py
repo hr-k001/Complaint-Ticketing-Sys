@@ -7,6 +7,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+from functools import lru_cache
+
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
 class Settings:
     app_name: str = os.getenv("APP_NAME", "Complaint Ticketing System API")
     app_env: str = os.getenv("APP_ENV", "development")
