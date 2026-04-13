@@ -117,4 +117,15 @@ def initialize_database() -> None:
                 """
             )
         )
+        connection.execute(
+            text(
+                """
+                CREATE OR ALTER VIEW vw_overdue_tickets AS
+                SELECT *
+                FROM tickets
+                WHERE due_date < GETDATE()
+                  AND status != 'Closed';
+                """
+            )
+        )
     Base.metadata.create_all(bind=engine)

@@ -93,7 +93,7 @@ def get_ticket_by_number(db: Session, ticket_number: str, current_user: User) ->
     ticket = db.scalar(select(Ticket).where(Ticket.ticket_number == ticket_number))
     if not ticket:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
-    if current_user.role == "user" and ticket.created_by != current_user.id:
+    if current_user.role == UserRole.USER.value and ticket.created_by != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to access this ticket")
     return ticket
 
@@ -121,9 +121,23 @@ def update_ticket_status(
     ticket.updated_at = datetime.utcnow()
     if next_status == TicketStatus.CLOSED:
         ticket.closed_at = datetime.utcnow()
+
+    create_ticket_history(db, ticket.id, current_status, next_status)
+
     db.commit()
     db.refresh(ticket)
     return ticket
+
+
+def create_ticket_history(db: Session, ticket_id: str, old_status: TicketStatus, new_status: TicketStatus) -> None:
+    from app.core.models import TicketHistory
+    history = TicketHistory(
+        ticket_id=ticket_id,
+        old_status=old_status.value,
+        new_status=new_status.value,
+        changed_at=datetime.utcnow()
+    )
+    db.add(history)
 
 
 def run_escalation(db: Session) -> dict[str, int]:
