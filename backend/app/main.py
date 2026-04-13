@@ -5,6 +5,7 @@ from app.core.database import initialize_database
 from app.routes import auth, comments, tickets
 from app.routes import agent_dashboard, admin_dashboard
 from app.routes import reports
+from app.routes import analytics
 
 settings = get_settings()
 app = FastAPI(title=settings.app_name)
@@ -30,3 +31,4 @@ from app.routes import agent_dashboard, admin_dashboard, reports
 app.include_router(agent_dashboard.router)
 app.include_router(admin_dashboard.router)
 app.include_router(reports.router)
+app.include_router(analytics.router)
