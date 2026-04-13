@@ -28,7 +28,7 @@ def root():
     return {"message": f"{settings.app_name} running", "environment": settings.app_env}
 from app.routes import agent_dashboard, admin_dashboard, reports
 
-app.include_router(agent_dashboard.router)
-app.include_router(admin_dashboard.router)
+# app.include_router(agent_dashboard.router)
+# app.include_router(admin_dashboard.router)
 app.include_router(reports.router)
 app.include_router(analytics.router)
