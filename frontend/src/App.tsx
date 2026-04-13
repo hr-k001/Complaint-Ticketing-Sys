@@ -1,7 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
-import { useAuth } from './hooks/useAuth';
+import { useAuth } from './hooks/useAuth'; // Change this line - import from hooks, not contexts
 import Login from './pages/Login';
 import Register from './pages/Register';
 import UserDashboard from './pages/UserDashboard';
@@ -16,16 +16,29 @@ function PrivateRoute({ children, roles }: { children: React.ReactNode; roles: s
     
     if (loading) return <div>Loading...</div>;
     if (!user) return <Navigate to="/login" />;
-    if (!roles.includes(user.role)) return <Navigate to="/" />;
+    if (!roles.includes(user.role)) return <Navigate to="/dashboard" />;
     return <>{children}</>;
 }
 
-function AppRoutes() {
-    const { user } = useAuth();
+// Root redirect component - fixed version
+function RootRedirect() {
+    const { user, loading } = useAuth();
+    
+    if (loading) return <div>Loading...</div>;
+    
     if (!user) return <Navigate to="/login" />;
-    if (user.role === 'admin') return <Navigate to="/admin" />;
-    if (user.role === 'agent') return <Navigate to="/agent" />;
-    return <Navigate to="/dashboard" />;
+    
+    // Redirect based on role
+    switch(user.role) {
+        case 'admin':
+            return <Navigate to="/admin" />;
+        case 'agent':
+            return <Navigate to="/agent" />;
+        case 'user':
+            return <Navigate to="/dashboard" />;
+        default:
+            return <Navigate to="/login" />;
+    }
 }
 
 function App() {
@@ -56,7 +69,9 @@ function App() {
                             <TicketDetails />
                         </PrivateRoute>
                     } />
-                    <Route path="/" element={<AppRoutes />} />
+                    <Route path="/" element={<RootRedirect />} />
+                    {/* Catch all unmatched routes - redirect to home */}
+                    <Route path="*" element={<Navigate to="/" />} />
                 </Routes>
             </BrowserRouter>
         </AuthProvider>

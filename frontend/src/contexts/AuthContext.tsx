@@ -1,6 +1,10 @@
+// contexts/AuthContext.tsx
+import type { User } from '../services/api';
+import { getCurrentUser, login as apiLogin, register as apiRegister } from '../services/api';
 import React, { useState, useEffect } from 'react';
-import { getCurrentUser, login as apiLogin, register as apiRegister, User } from '../services/api';
 import { AuthContext } from './AuthContextValue';
+import type { AuthContextType } from '../types/auth.types';
+import { AxiosError } from 'axios'; // Import AxiosError type
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
@@ -28,15 +32,26 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     const login = async (credentials: { username: string; password: string }) => {
-        const response = await apiLogin(credentials);
-        const { access_token } = response.data;
-        localStorage.setItem('access_token', access_token);
-        await loadUser();
-        return response.data;
+        try {
+            const response = await apiLogin(credentials);
+            const { access_token } = response.data;
+            localStorage.setItem('access_token', access_token);
+            await loadUser();
+            return response.data;
+        } catch (error) {
+            // Use unknown type instead of any
+            if (error instanceof AxiosError) {
+                console.error('Login error:', error.response?.data);
+                throw new Error(error.response?.data?.detail || 'Login failed');
+            }
+            console.error('Login error:', error);
+            throw error;
+        }
     };
 
     const register = async (userData: { full_name: string; email: string; password: string; role: string }) => {
         await apiRegister(userData);
+        await login({ username: userData.email, password: userData.password });
     };
 
     const logout = (): void => {
@@ -44,7 +59,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setUser(null);
     };
 
-    const value = {
+    const value: AuthContextType = {
         user,
         loading,
         login,
