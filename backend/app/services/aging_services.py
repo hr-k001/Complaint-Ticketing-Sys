@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import text, func, and_, or_
+from sqlalchemy import select
 from fastapi import HTTPException, status
 
 from app.core.models import Ticket, User
@@ -13,36 +13,81 @@ class AgingService:
         self.db = db
     
     def get_ticket_aging_report(self, current_user: User) -> List[Dict[str, Any]]:
-        """Get all tickets with aging metrics (role-based)"""
+        """Get all tickets with aging metrics calculated in Python"""
         
-        # Build base query
-        query = text("""
-            SELECT * FROM vw_ticket_aging 
-            WHERE 1=1
-            ORDER BY age_hours DESC
-        """)
+        # Get tickets based on role
+        query = select(Ticket)
         
-        result = self.db.execute(query)
-        tickets = [dict(row._mapping) for row in result]
-        
-        # Apply role-based filtering
         if current_user.role == UserRole.USER.value:
-            tickets = [t for t in tickets if t['user_id'] == current_user.id]
+            query = query.where(Ticket.created_by == current_user.id)
         elif current_user.role == UserRole.AGENT.value:
-            tickets = [t for t in tickets if t['assigned_to'] == current_user.id]
+            query = query.where(Ticket.assigned_to == current_user.id)
         # Admin sees all
         
-        return tickets
+        tickets = self.db.execute(query).scalars().all()
+        
+        # Calculate aging metrics in Python
+        now = datetime.utcnow()
+        aging_data = []
+        
+        for ticket in tickets:
+            age_days = (now - ticket.created_at).days
+            age_hours = int((now - ticket.created_at).total_seconds() / 3600)
+            
+            # Determine aging bucket
+            if ticket.status in ['Closed', 'Resolved']:
+                bucket = 'Resolved'
+            elif ticket.due_date and ticket.due_date < now:
+                bucket = 'Critical - Overdue'
+            elif ticket.due_date and ticket.due_date < now + timedelta(days=1):
+                bucket = 'Urgent - Due Today'
+            elif age_days <= 1:
+                bucket = 'New (<24h)'
+            elif age_days <= 3:
+                bucket = 'Aging (1-3 days)'
+            elif age_days <= 5:
+                bucket = 'Stale (3-5 days)'
+            elif age_days > 5:
+                bucket = 'Very Stale (>5 days)'
+            else:
+                bucket = 'Normal'
+            
+            # Determine SLA status
+            sla_status = 'Within SLA'
+            if ticket.priority == 'high' and age_hours > 24:
+                sla_status = 'SLA Breach'
+            elif ticket.priority == 'medium' and age_hours > 72:
+                sla_status = 'SLA Breach'
+            elif ticket.priority == 'low' and age_hours > 120:
+                sla_status = 'SLA Breach'
+            
+            aging_data.append({
+                'id': ticket.id,
+                'ticket_number': ticket.ticket_number,
+                'title': ticket.title,
+                'status': ticket.status,
+                'priority': ticket.priority,
+                'category': ticket.category,
+                'created_at': ticket.created_at.isoformat() if ticket.created_at else None,
+                'due_date': ticket.due_date.isoformat() if ticket.due_date else None,
+                'is_escalated': ticket.is_escalated,
+                'created_by': ticket.created_by,
+                'assigned_to': ticket.assigned_to,
+                'age_hours': age_hours,
+                'age_days': age_days,
+                'aging_bucket': bucket,
+                'sla_status': sla_status
+            })
+        
+        return aging_data
     
     def get_aging_summary(self, current_user: User) -> Dict[str, Any]:
         """Get summary statistics by aging bucket"""
         
-        # Get all tickets first (will filter by role)
         tickets = self.get_ticket_aging_report(current_user)
         
-        # Calculate summary
         summary = {
-            "total_active_tickets": len([t for t in tickets if t['status'] not in ['closed', 'resolved']]),
+            "total_active_tickets": len([t for t in tickets if t['status'] not in ['Closed', 'Resolved']]),
             "average_age_hours": 0,
             "oldest_ticket_hours": 0,
             "by_bucket": {},
@@ -56,7 +101,7 @@ class AgingService:
             return summary
         
         # Calculate averages
-        ages = [t['age_hours'] for t in tickets if t['status'] not in ['closed', 'resolved']]
+        ages = [t['age_hours'] for t in tickets if t['status'] not in ['Closed', 'Resolved']]
         if ages:
             summary['average_age_hours'] = sum(ages) / len(ages)
             summary['oldest_ticket_hours'] = max(ages)
@@ -70,7 +115,7 @@ class AgingService:
                     'tickets': []
                 }
             summary['by_bucket'][bucket]['count'] += 1
-            if len(summary['by_bucket'][bucket]['tickets']) < 5:  # Limit to 5 examples
+            if len(summary['by_bucket'][bucket]['tickets']) < 5:
                 summary['by_bucket'][bucket]['tickets'].append({
                     'ticket_number': ticket['ticket_number'],
                     'title': ticket['title'],
@@ -79,15 +124,11 @@ class AgingService:
             
             # Priority breakdown
             priority = ticket['priority']
-            if priority not in summary['by_priority']:
-                summary['by_priority'][priority] = 0
-            summary['by_priority'][priority] += 1
+            summary['by_priority'][priority] = summary['by_priority'].get(priority, 0) + 1
             
             # Status breakdown
             status = ticket['status']
-            if status not in summary['by_status']:
-                summary['by_status'][status] = 0
-            summary['by_status'][status] += 1
+            summary['by_status'][status] = summary['by_status'].get(status, 0) + 1
             
             # SLA breaches
             if ticket['sla_status'] == 'SLA Breach':
@@ -106,23 +147,10 @@ class AgingService:
         stale_tickets = [
             t for t in tickets 
             if t['age_days'] > days_threshold 
-            and t['status'] not in ['closed', 'resolved']
+            and t['status'] not in ['Closed', 'Resolved']
         ]
         
         return stale_tickets
-    
-    def get_agent_performance_metrics(self, current_user: User) -> List[Dict[str, Any]]:
-        """Get aging metrics per agent (admin only)"""
-        
-        if current_user.role != UserRole.ADMIN.value:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only admins can view agent performance metrics"
-            )
-        
-        query = text("SELECT * FROM vw_agent_aging_metrics ORDER BY stale_count DESC")
-        result = self.db.execute(query)
-        return [dict(row._mapping) for row in result]
     
     def get_tickets_by_age_bucket(self, bucket: str, current_user: User) -> List[Dict[str, Any]]:
         """Get tickets in a specific aging bucket"""
@@ -133,27 +161,14 @@ class AgingService:
     def get_aging_trends(self, days: int = 7, current_user: User = None) -> Dict[str, Any]:
         """Get aging trends over time"""
         
-        # Get tickets created in last N days
+        tickets = self.get_ticket_aging_report(current_user) if current_user else []
+        
+        # Filter tickets created in last N days
         cutoff_date = datetime.utcnow() - timedelta(days=days)
+        recent_tickets = [t for t in tickets if datetime.fromisoformat(t['created_at']) >= cutoff_date]
         
-        query = self.db.query(
-            Ticket,
-            func.datediff('day', Ticket.created_at, func.now()).label('age_days')
-        ).filter(
-            Ticket.created_at >= cutoff_date,
-            Ticket.status.in_(['open', 'in_progress'])
-        )
-        
-        if current_user and current_user.role == UserRole.USER.value:
-            query = query.filter(Ticket.user_id == current_user.id)
-        elif current_user and current_user.role == UserRole.AGENT.value:
-            query = query.filter(Ticket.assigned_to == current_user.id)
-        
-        results = query.all()
-        
-        # Calculate trends
         trends = {
-            'daily_average_age': [],
+            'daily_average_age': 0,
             'tickets_by_age': {
                 '0-1_days': 0,
                 '1-3_days': 0,
@@ -162,7 +177,8 @@ class AgingService:
             }
         }
         
-        for ticket, age_days in results:
+        for ticket in recent_tickets:
+            age_days = ticket['age_days']
             if age_days <= 1:
                 trends['tickets_by_age']['0-1_days'] += 1
             elif age_days <= 3:
@@ -172,14 +188,43 @@ class AgingService:
             else:
                 trends['tickets_by_age']['5+_days'] += 1
         
+        if recent_tickets:
+            avg_age = sum(t['age_hours'] for t in recent_tickets) / len(recent_tickets)
+            trends['daily_average_age'] = avg_age / days
+        
         return trends
+    
+    def get_aging_dashboard_metrics(self, current_user: User) -> Dict[str, Any]:
+        """Get key aging metrics for dashboard display"""
+        
+        summary = self.get_aging_summary(current_user)
+        
+        return {
+            "average_response_time_hours": round(summary.get('average_age_hours', 0), 2),
+            "stale_ticket_count": summary.get('by_bucket', {}).get('Stale (3-5 days)', {}).get('count', 0) +
+                                  summary.get('by_bucket', {}).get('Very Stale (>5 days)', {}).get('count', 0),
+            "sla_breach_count": summary.get('sla_breaches', 0),
+            "escalated_count": summary.get('escalated_count', 0),
+            "oldest_ticket_age_hours": summary.get('oldest_ticket_hours', 0),
+            "aging_distribution": {
+                bucket: data['count'] 
+                for bucket, data in summary.get('by_bucket', {}).items()
+            }
+        }
     
     def get_ticket_aging_details(self, ticket_id: str, current_user: User) -> Dict[str, Any]:
         """Get detailed aging information for a specific ticket"""
         
-        # First check if user can access this ticket
-        from app.services.ticket_service import get_ticket_by_id
-        ticket = get_ticket_by_id(self.db, ticket_id, current_user)
+        # Get the ticket
+        ticket = self.db.get(Ticket, ticket_id)
+        if not ticket:
+            raise HTTPException(status_code=404, detail="Ticket not found")
+        
+        # Check permission
+        if current_user.role == UserRole.USER.value and ticket.created_by != current_user.id:
+            raise HTTPException(status_code=403, detail="Permission denied")
+        if current_user.role == UserRole.AGENT.value and ticket.assigned_to != current_user.id:
+            raise HTTPException(status_code=403, detail="Permission denied")
         
         # Calculate detailed aging metrics
         now = datetime.utcnow()
@@ -188,14 +233,14 @@ class AgingService:
         age_details = {
             'ticket_id': ticket.id,
             'ticket_number': ticket.ticket_number,
-            'created_at': created_at,
-            'current_time': now,
+            'created_at': created_at.isoformat(),
+            'current_time': now.isoformat(),
             'age_days': (now - created_at).days,
-            'age_hours': (now - created_at).seconds // 3600 + (now - created_at).days * 24,
-            'age_minutes': ((now - created_at).seconds // 60) % 60,
+            'age_hours': int((now - created_at).total_seconds() / 3600),
+            'age_minutes': int(((now - created_at).total_seconds() / 60) % 60),
             'status': ticket.status,
             'priority': ticket.priority,
-            'due_date': ticket.due_date,
+            'due_date': ticket.due_date.isoformat() if ticket.due_date else None,
             'is_escalated': ticket.is_escalated,
             'sla_remaining_hours': None
         }
@@ -203,15 +248,7 @@ class AgingService:
         # Calculate SLA remaining if due date exists
         if ticket.due_date:
             remaining = ticket.due_date - now
-            age_details['sla_remaining_hours'] = max(0, remaining.total_seconds() / 3600)
+            age_details['sla_remaining_hours'] = max(0, int(remaining.total_seconds() / 3600))
             age_details['sla_status'] = 'Breached' if remaining.total_seconds() < 0 else 'Active'
-        
-        # Add status duration if you track status changes
-        # This requires a status_history table
-        if hasattr(ticket, 'status_history') and ticket.status_history:
-            current_status_entry = max(ticket.status_history, key=lambda x: x.changed_at)
-            age_details['current_status_duration_hours'] = (
-                now - current_status_entry.changed_at
-            ).total_seconds() / 3600
         
         return age_details
