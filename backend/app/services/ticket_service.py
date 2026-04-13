@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.models import Ticket, User
 from app.schemas.ticket_schema import TicketCreate, TicketStatus, TicketStatusUpdate
+from app.schemas.user_schema import UserRole
 from app.services.sla_service import calculate_due_date
 
 
@@ -47,10 +48,33 @@ def create_ticket(db: Session, ticket: TicketCreate, created_by: User) -> Ticket
     return db_ticket
 
 
+def assign_ticket_to_agent(db: Session, ticket_number: str, agent_number: str) -> Ticket:
+    ticket = db.scalar(select(Ticket).where(Ticket.ticket_number == ticket_number))
+    if not ticket:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
+
+    agent = db.scalar(
+        select(User).where(User.agent_number == agent_number, User.role == UserRole.AGENT.value)
+    )
+    if not agent:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
+
+    ticket.assigned_to = agent.id
+    ticket.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(ticket)
+    return ticket
+
+
 def list_tickets(db: Session, current_user: User) -> list[Ticket]:
     stmt = select(Ticket).order_by(Ticket.created_at.desc())
-    if current_user.role == "user":
+    if current_user.role == UserRole.USER.value:
         stmt = stmt.where(Ticket.created_by == current_user.id)
+    return list(db.scalars(stmt).all())
+
+
+def list_assigned_tickets(db: Session, agent_id: str) -> list[Ticket]:
+    stmt = select(Ticket).where(Ticket.assigned_to == agent_id).order_by(Ticket.created_at.desc())
     return list(db.scalars(stmt).all())
 
 
@@ -58,7 +82,9 @@ def get_ticket_by_id(db: Session, ticket_id: str, current_user: User) -> Ticket:
     ticket = db.get(Ticket, ticket_id)
     if not ticket:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
-    if current_user.role == "user" and ticket.created_by != current_user.id:
+    if current_user.role == UserRole.USER.value and ticket.created_by != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to access this ticket")
+    if current_user.role == UserRole.AGENT.value and ticket.assigned_to != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to access this ticket")
     return ticket
 
@@ -97,36 +123,6 @@ def update_ticket_status(
         ticket.closed_at = datetime.utcnow()
     db.commit()
     db.refresh(ticket)
-def update_ticket_status(db: Session, ticket_id: str, payload: TicketStatusUpdate, current_user: User):
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
-
-    if not ticket:
-        raise HTTPException(status_code=404, detail="Ticket not found")
-
-    current_status = TicketStatus(ticket.status)   
-    next_status = payload.status                   
-
-    # same status check
-    if next_status == current_status:
-        return ticket
-
-    # validate transition
-    if next_status not in ALLOWED_STATUS_TRANSITIONS[current_status]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid status transition from {current_status.value} to {next_status.value}",
-        )
-
-    # update
-    ticket.status = next_status.value
-    ticket.updated_at = datetime.utcnow()
-
-    if next_status == TicketStatus.CLOSED:
-        ticket.closed_at = datetime.utcnow()
-
-    db.commit()
-    db.refresh(ticket)
-
     return ticket
 
 

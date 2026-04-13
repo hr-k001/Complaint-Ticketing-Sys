@@ -23,7 +23,7 @@ router = APIRouter()
 def create(
     ticket: TicketCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles(UserRole.USER, UserRole.ADMIN)),
 ):
     return create_ticket(db, ticket, current_user)
 
@@ -31,7 +31,7 @@ def create(
 @router.get("/", response_model=list[TicketResponse])
 def get_all(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles(UserRole.USER, UserRole.ADMIN)),
 ):
     return list_tickets(db, current_user)
 
@@ -40,7 +40,7 @@ def get_all(
 def get_one_by_number(
     ticket_number: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles(UserRole.USER, UserRole.ADMIN)),
 ):
     return get_ticket_by_number(db, ticket_number, current_user)
 
@@ -49,7 +49,7 @@ def get_one_by_number(
 def get_one(
     ticket_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(UserRole.AGENT, UserRole.ADMIN)),
+    current_user: User = Depends(require_roles(UserRole.USER, UserRole.ADMIN)),
 ):
     return get_ticket_by_id(db, ticket_id, current_user)
 
@@ -57,7 +57,7 @@ def get_one(
 @router.patch(
     "/{ticket_id}/status",
     response_model=TicketResponse,
-    dependencies=[Depends(require_roles(UserRole.AGENT, UserRole.ADMIN))],
+    dependencies=[Depends(require_roles(UserRole.ADMIN))],
 )
 def update_status(
     ticket_id: str,

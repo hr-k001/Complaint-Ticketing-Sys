@@ -17,6 +17,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="user")
+    agent_number: Mapped[str | None] = mapped_column(String(20), unique=True, nullable=True)
 
     created_tickets = relationship("Ticket", foreign_keys="Ticket.created_by", back_populates="creator")
     assigned_tickets = relationship("Ticket", foreign_keys="Ticket.assigned_to", back_populates="assignee")

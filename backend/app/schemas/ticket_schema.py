@@ -37,6 +37,11 @@ class TicketStatusUpdate(BaseModel):
     status: TicketStatus
 
 
+class TicketAssignRequest(BaseModel):
+    ticket_number: str
+    agent_number: str
+
+
 class TicketResponse(BaseModel):
     id: str
     ticket_number: str

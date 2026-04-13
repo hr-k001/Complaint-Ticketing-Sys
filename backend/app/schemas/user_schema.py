@@ -26,6 +26,7 @@ class UserResponse(BaseModel):
     full_name: str
     email: EmailStr
     role: UserRole
+    agent_number: str | None = None
 
     model_config = {"from_attributes": True}
 

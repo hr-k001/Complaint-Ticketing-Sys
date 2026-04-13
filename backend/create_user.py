@@ -6,6 +6,7 @@ from sqlalchemy import select
 from app.core.database import SessionLocal
 from app.core.models import User
 from app.core.security import hash_password
+from app.services.auth_service import generate_agent_number
 
 
 VALID_ROLES = {"user", "agent", "admin"}
@@ -35,6 +36,7 @@ def create_user(full_name: str, email: str, password: str, role: str) -> None:
             email=email,
             password_hash=hash_password(password),
             role=role,
+            agent_number=generate_agent_number(db) if role == "agent" else None,
         )
         db.add(user)
         db.commit()
