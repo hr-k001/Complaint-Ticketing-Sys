@@ -3,16 +3,8 @@ from functools import lru_cache
 
 from dotenv import load_dotenv
 
-
 load_dotenv()
 
-
-from functools import lru_cache
-
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
 
 class Settings:
     app_name: str = os.getenv("APP_NAME", "Complaint Ticketing System API")
@@ -24,6 +16,7 @@ class Settings:
     jwt_algorithm: str = os.getenv("JWT_ALGORITHM", "HS256")
     access_token_expire_minutes: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 
+    # Azure SQL Settings
     azure_sql_server: str = os.getenv("AZURE_SQL_SERVER", "")
     azure_sql_database: str = os.getenv("AZURE_SQL_DATABASE", "")
     azure_sql_username: str = os.getenv("AZURE_SQL_USERNAME", "")
@@ -31,6 +24,9 @@ class Settings:
     azure_sql_driver: str = os.getenv("AZURE_SQL_DRIVER", "ODBC Driver 18 for SQL Server")
     azure_sql_encrypt: str = os.getenv("AZURE_SQL_ENCRYPT", "yes")
     azure_sql_trust_cert: str = os.getenv("AZURE_SQL_TRUST_CERT", "yes")
+    
+    # CORS Settings
+    frontend_urls: str = os.getenv("FRONTEND_URLS", "http://localhost:5173,http://localhost:3000")
 
 
 @lru_cache
