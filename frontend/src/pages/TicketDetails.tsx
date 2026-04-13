@@ -1,34 +1,46 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { getTicketByNumber, getTicketComments, addComment, updateTicketStatus } from '../services/api';
-import { useAuth } from '../hooks/useAuth';
-import Container from '@mui/material/Container';
-import Paper from '@mui/material/Paper';
-import Typography from '@mui/material/Typography';
-import Button from '@mui/material/Button';
-import TextField from '@mui/material/TextField';
-import Chip from '@mui/material/Chip';
-import Box from '@mui/material/Box';
-import Divider from '@mui/material/Divider';
-import Select from '@mui/material/Select';
-import MenuItem from '@mui/material/MenuItem';
-import FormControl from '@mui/material/FormControl';
-import InputLabel from '@mui/material/InputLabel';
-// Remove Alert import since it's not used
-// import Alert from '@mui/material/Alert';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useParams } from 'react-router-dom';
+import { getTicketByNumber, getTicketComments, addComment } from '../services/api';
+import { AxiosError } from 'axios';
+import {
+    Container,
+    Typography,
+    Paper,
+    Box,
+    Chip,
+    CircularProgress,
+    Alert,
+    Button,
+    TextField,
+    Divider,
+    List,
+    ListItem,
+    ListItemText,
+    ListItemAvatar,
+    Avatar,
+    Card,
+    CardContent,
+} from '@mui/material';
+import CommentIcon from '@mui/icons-material/Comment';
+import ScheduleIcon from '@mui/icons-material/Schedule';
+import CategoryIcon from '@mui/icons-material/Category';
+import PersonIcon from '@mui/icons-material/Person';
 
-// Define types
 interface Ticket {
     id: string;
     ticket_number: string;
     title: string;
     description: string;
+    status: string;
     priority: string;
     category: string;
-    status: string;
     created_at: string;
     due_date: string;
     is_escalated: boolean;
+    user?: {
+        full_name: string;
+        email: string;
+    };
 }
 
 interface Comment {
@@ -36,57 +48,76 @@ interface Comment {
     author_id: string;
     message: string;
     created_at: string;
+    author_name?: string;
 }
 
 const TicketDetails: React.FC = () => {
     const { ticketNumber } = useParams<{ ticketNumber: string }>();
     const [ticket, setTicket] = useState<Ticket | null>(null);
     const [comments, setComments] = useState<Comment[]>([]);
-    const [newComment, setNewComment] = useState<string>('');
     const [loading, setLoading] = useState<boolean>(true);
-    const { user } = useAuth();
-    const navigate = useNavigate();
+    const [loadingComments, setLoadingComments] = useState<boolean>(false);
+    const [error, setError] = useState<string | null>(null);
+    const [newComment, setNewComment] = useState<string>('');
+    const [submitting, setSubmitting] = useState<boolean>(false);
 
-    useEffect(() => {
-        if (ticketNumber) {
-            loadTicketDetails();
-        }
-    }, [ticketNumber]);
-
-    const loadTicketDetails = async (): Promise<void> => {
+    const loadTicketDetails = useCallback(async () => {
+        if (!ticketNumber) return;
+        
         try {
-            const [ticketRes, commentsRes] = await Promise.all([
-                getTicketByNumber(ticketNumber!),
-                getTicketComments(ticketNumber!)
-            ]);
-            setTicket(ticketRes.data);
-            setComments(commentsRes.data);
-        } catch (error) {
-            console.error('Error loading ticket:', error);
-            navigate('/dashboard');
+            setLoading(true);
+            const response = await getTicketByNumber(ticketNumber);
+            setTicket(response.data);
+            setError(null);
+        } catch (err) {
+            console.error('Error loading ticket:', err);
+            if (err instanceof AxiosError) {
+                setError(err.response?.data?.detail || err.message);
+            } else {
+                setError('Failed to load ticket details');
+            }
         } finally {
             setLoading(false);
         }
-    };
+    }, [ticketNumber]);
 
-    const handleAddComment = async (): Promise<void> => {
-        if (!newComment.trim() || !ticket) return;
+    const loadComments = useCallback(async () => {
+        if (!ticket?.id) return;
+        
         try {
+            setLoadingComments(true);
+            const response = await getTicketComments(ticket.id);
+            setComments(response.data || []);
+        } catch (err) {
+            console.error('Error loading comments:', err);
+        } finally {
+            setLoadingComments(false);
+        }
+    }, [ticket?.id]);
+
+    useEffect(() => {
+        loadTicketDetails();
+    }, [loadTicketDetails]);
+
+    useEffect(() => {
+        if (ticket) {
+            loadComments();
+        }
+    }, [ticket, loadComments]);
+
+    const handleAddComment = async () => {
+        if (!newComment.trim() || !ticket) return;
+        
+        try {
+            setSubmitting(true);
             await addComment(ticket.id, newComment);
             setNewComment('');
-            loadTicketDetails();
-        } catch (error) {
-            console.error('Error adding comment:', error);
-        }
-    };
-
-    const handleStatusUpdate = async (newStatus: string): Promise<void> => {
-        if (!ticket) return;
-        try {
-            await updateTicketStatus(ticket.id, newStatus);
-            loadTicketDetails();
-        } catch (error) {
-            console.error('Error updating status:', error);
+            await loadComments();
+        } catch (err) {
+            console.error('Error adding comment:', err);
+            setError('Failed to add comment');
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -101,92 +132,199 @@ const TicketDetails: React.FC = () => {
         return colors[status] || '#9e9e9e';
     };
 
-    if (loading) return <Typography>Loading...</Typography>;
-    if (!ticket) return <Typography>Ticket not found</Typography>;
+    const getPriorityColor = (priority: string): string => {
+        const colors: Record<string, string> = {
+            'Low': '#4caf50',
+            'Medium': '#ff9800',
+            'High': '#f44336',
+            'Critical': '#9c27b0'
+        };
+        return colors[priority] || '#9e9e9e';
+    };
+
+    if (loading) {
+        return (
+            <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+                    <CircularProgress />
+                </Box>
+            </Container>
+        );
+    }
+
+    if (error) {
+        return (
+            <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+                <Alert severity="error" sx={{ mb: 2 }}>
+                    {error}
+                </Alert>
+                <Button variant="contained" onClick={loadTicketDetails}>
+                    Retry
+                </Button>
+            </Container>
+        );
+    }
+
+    if (!ticket) {
+        return (
+            <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+                <Alert severity="info">Ticket not found</Alert>
+            </Container>
+        );
+    }
 
     return (
         <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-            <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
-                <Box display="flex" justifyContent="space-between" alignItems="start" mb={2}>
-                    <Box>
-                        <Typography variant="h5">{ticket.title}</Typography>
-                        <Typography color="textSecondary" gutterBottom>
-                            Ticket #{ticket.ticket_number}
-                        </Typography>
-                    </Box>
+            {/* Header */}
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 2 }}>
+                <Box>
+                    <Typography variant="h4" gutterBottom>
+                        Ticket #{ticket.ticket_number}
+                    </Typography>
+                    <Typography variant="subtitle1" color="textSecondary">
+                        {ticket.title}
+                    </Typography>
+                </Box>
+                <Box>
                     <Chip 
                         label={ticket.status} 
-                        sx={{ backgroundColor: getStatusColor(ticket.status), color: 'white', fontSize: '1rem', p: 2 }}
+                        sx={{ 
+                            backgroundColor: getStatusColor(ticket.status), 
+                            color: 'white',
+                            fontWeight: 'bold',
+                            mr: 1
+                        }}
+                    />
+                    <Chip 
+                        label={ticket.priority} 
+                        sx={{ 
+                            backgroundColor: getPriorityColor(ticket.priority), 
+                            color: 'white',
+                            fontWeight: 'bold'
+                        }}
                     />
                 </Box>
+            </Box>
+
+            {/* Ticket Details Grid */}
+            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2, mb: 2 }}>
+                <Card>
+                    <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                            <CategoryIcon sx={{ mr: 1, color: '#1976d2' }} />
+                            <Typography variant="subtitle2" color="textSecondary">Category</Typography>
+                        </Box>
+                        <Typography variant="body1">{ticket.category}</Typography>
+                    </CardContent>
+                </Card>
                 
-                <Divider sx={{ my: 2 }} />
+                <Card>
+                    <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                            <PersonIcon sx={{ mr: 1, color: '#1976d2' }} />
+                            <Typography variant="subtitle2" color="textSecondary">Created By</Typography>
+                        </Box>
+                        <Typography variant="body1">{ticket.user?.full_name || 'Unknown'}</Typography>
+                    </CardContent>
+                </Card>
                 
-                <Box display="grid" gridTemplateColumns="repeat(2, 1fr)" gap={2} mb={2}>
-                    <Typography><strong>Priority:</strong> {ticket.priority}</Typography>
-                    <Typography><strong>Category:</strong> {ticket.category}</Typography>
-                    <Typography><strong>Created:</strong> {new Date(ticket.created_at).toLocaleString()}</Typography>
-                    <Typography><strong>Due Date:</strong> {new Date(ticket.due_date).toLocaleString()}</Typography>
-                    <Typography><strong>Escalated:</strong> {ticket.is_escalated ? 'Yes' : 'No'}</Typography>
-                </Box>
+                <Card>
+                    <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                            <ScheduleIcon sx={{ mr: 1, color: '#1976d2' }} />
+                            <Typography variant="subtitle2" color="textSecondary">Created Date</Typography>
+                        </Box>
+                        <Typography variant="body1">
+                            {new Date(ticket.created_at).toLocaleString()}
+                        </Typography>
+                    </CardContent>
+                </Card>
                 
-                <Typography variant="h6" gutterBottom>Description</Typography>
-                <Paper variant="outlined" sx={{ p: 2, bgcolor: '#f5f5f5', mb: 2 }}>
-                    <Typography>{ticket.description}</Typography>
-                </Paper>
-                
-                {(user?.role === 'agent' || user?.role === 'admin') && (
-                    <Box mt={2}>
-                        <Typography variant="h6" gutterBottom>Update Status</Typography>
-                        <FormControl size="small" sx={{ minWidth: 200 }}>
-                            <InputLabel>Status</InputLabel>
-                            <Select
-                                value={ticket.status}
-                                label="Status"
-                                onChange={(e) => handleStatusUpdate(e.target.value)}
-                            >
-                                <MenuItem value="Open">Open</MenuItem>
-                                <MenuItem value="In Progress">In Progress</MenuItem>
-                                <MenuItem value="Resolved">Resolved</MenuItem>
-                                <MenuItem value="Closed">Closed</MenuItem>
-                            </Select>
-                        </FormControl>
-                    </Box>
-                )}
+                <Card>
+                    <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                            <ScheduleIcon sx={{ mr: 1, color: '#f44336' }} />
+                            <Typography variant="subtitle2" color="textSecondary">Due Date</Typography>
+                        </Box>
+                        <Typography variant="body1" sx={{ 
+                            color: new Date(ticket.due_date) < new Date() && ticket.status !== 'Resolved' ? '#f44336' : 'inherit'
+                        }}>
+                            {new Date(ticket.due_date).toLocaleDateString()}
+                        </Typography>
+                    </CardContent>
+                </Card>
+            </Box>
+
+            {/* Description */}
+            <Paper sx={{ p: 3, mb: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                    Description
+                </Typography>
+                <Typography variant="body1">
+                    {ticket.description}
+                </Typography>
             </Paper>
-            
-            <Paper elevation={3} sx={{ p: 3 }}>
-                <Typography variant="h6" gutterBottom>Comments</Typography>
+
+            {/* Comments Section */}
+            <Paper sx={{ p: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                    Comments
+                </Typography>
                 
-                <Box display="flex" gap={1} mb={3}>
+                {loadingComments ? (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+                        <CircularProgress />
+                    </Box>
+                ) : (
+                    <List>
+                        {comments.length === 0 ? (
+                            <Typography color="textSecondary" sx={{ p: 2, textAlign: 'center' }}>
+                                No comments yet. Be the first to add a comment!
+                            </Typography>
+                        ) : (
+                            comments.map((comment) => (
+                                <React.Fragment key={comment.id}>
+                                    <ListItem alignItems="flex-start">
+                                        <ListItemAvatar>
+                                            <Avatar>
+                                                <CommentIcon />
+                                            </Avatar>
+                                        </ListItemAvatar>
+                                        <ListItemText
+                                            primary={
+                                                <Typography variant="body2" color="textSecondary">
+                                                    {new Date(comment.created_at).toLocaleString()}
+                                                </Typography>
+                                            }
+                                            secondary={comment.message}
+                                        />
+                                    </ListItem>
+                                    <Divider variant="inset" component="li" />
+                                </React.Fragment>
+                            ))
+                        )}
+                    </List>
+                )}
+                
+                <Box sx={{ mt: 2 }}>
                     <TextField
+                        label="Add a comment"
                         fullWidth
                         multiline
-                        rows={2}
-                        placeholder="Add a comment..."
+                        rows={3}
                         value={newComment}
                         onChange={(e) => setNewComment(e.target.value)}
+                        placeholder="Type your message here..."
                     />
-                    <Button variant="contained" onClick={handleAddComment} sx={{ height: 56 }}>
-                        Post
+                    <Button 
+                        variant="contained" 
+                        onClick={handleAddComment}
+                        sx={{ mt: 1 }}
+                        disabled={!newComment.trim() || submitting}
+                    >
+                        {submitting ? <CircularProgress size={24} /> : 'Post Comment'}
                     </Button>
                 </Box>
-                
-                {comments.length === 0 ? (
-                    <Typography color="textSecondary">No comments yet.</Typography>
-                ) : (
-                    comments.map((comment) => (
-                        <Paper key={comment.id} variant="outlined" sx={{ p: 2, mb: 2 }}>
-                            <Typography variant="subtitle2" color="primary">
-                                User {comment.author_id}
-                            </Typography>
-                            <Typography variant="caption" color="textSecondary">
-                                {new Date(comment.created_at).toLocaleString()}
-                            </Typography>
-                            <Typography sx={{ mt: 1 }}>{comment.message}</Typography>
-                        </Paper>
-                    ))
-                )}
             </Paper>
         </Container>
     );
