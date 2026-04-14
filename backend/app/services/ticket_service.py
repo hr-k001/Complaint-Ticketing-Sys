@@ -8,7 +8,7 @@ from app.services.sla_service import calculate_due_date, is_ticket_overdue
 import uuid
 from datetime import datetime
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 def list_tickets(db: Session, current_user: User):
     """List tickets with role-based filtering"""
@@ -79,8 +79,8 @@ def create_ticket(db: Session, ticket: TicketCreate, current_user: User):
         status='Open',
         created_by=current_user.id,
         assigned_to=None,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
         due_date=due_date,
         closed_at=None,
         is_escalated=False,
@@ -107,11 +107,11 @@ def update_ticket_status(db: Session, ticket_id: str, payload: TicketStatusUpdat
     # Update status
     old_status = ticket.status
     ticket.status = payload.status
-    ticket.updated_at = datetime.utcnow()
+    ticket.updated_at = datetime.now(timezone.utc)
     
     # If status is closed, set closed_at
     if payload.status.lower() == 'closed':
-        ticket.closed_at = datetime.utcnow()
+        ticket.closed_at = datetime.now(timezone.utc)
     
     db.commit()
     db.refresh(ticket)
@@ -130,8 +130,8 @@ def run_escalation(db: Session):
             if not ticket.is_escalated:
                 ticket.status = 'Escalated'
                 ticket.is_escalated = True
-                ticket.escalated_at = datetime.utcnow()
-                ticket.updated_at = datetime.utcnow()
+                ticket.escalated_at = datetime.now(timezone.utc)
+                ticket.updated_at = datetime.now(timezone.utc)
                 escalated_count += 1
     
     db.commit()
@@ -201,7 +201,7 @@ def assign_ticket_to_agent(db, ticket_number: str, agent_number: str) -> Ticket:
     
     # Assign ticket to agent
     ticket.assigned_to = agent.id
-    ticket.updated_at = datetime.utcnow()
+    ticket.updated_at = datetime.now(timezone.utc)
     
     db.commit()
     db.refresh(ticket)

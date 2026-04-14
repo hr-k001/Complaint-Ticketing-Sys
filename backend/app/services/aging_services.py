@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -27,7 +27,7 @@ class AgingService:
         tickets = self.db.execute(query).scalars().all()
         
         # Calculate aging metrics in Python
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         aging_data = []
         
         for ticket in tickets:
@@ -164,7 +164,7 @@ class AgingService:
         tickets = self.get_ticket_aging_report(current_user) if current_user else []
         
         # Filter tickets created in last N days
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
         recent_tickets = [t for t in tickets if datetime.fromisoformat(t['created_at']) >= cutoff_date]
         
         trends = {
@@ -227,7 +227,7 @@ class AgingService:
             raise HTTPException(status_code=403, detail="Permission denied")
         
         # Calculate detailed aging metrics
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         created_at = ticket.created_at
         
         age_details = {

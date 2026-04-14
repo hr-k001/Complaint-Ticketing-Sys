@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import HTTPException, status
@@ -86,14 +86,14 @@ def add_comment(db: Session, ticket_id: str, message: str, current_user: User) -
         ticket_id=ticket_id,
         author_id=current_user.id,
         message=message.strip(),
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
     )
     db.add(comment)
     db.commit()
     db.refresh(comment)
 
     # ticket.updated_at is fine — Ticket model DOES have this field
-    ticket.updated_at = datetime.utcnow()
+    ticket.updated_at = datetime.now(timezone.utc)
     db.commit()
 
     return comment
@@ -154,7 +154,7 @@ def update_comment(
     
     # Update comment
     comment.message = message.strip()
-    comment.updated_at = datetime.utcnow()
+    comment.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(comment)
     
