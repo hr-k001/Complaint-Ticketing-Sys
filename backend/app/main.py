@@ -14,7 +14,7 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Code here runs when the application starts
-    print("🚀 Application starting up...")
+    print("Application starting up...")
     initialize_database()
     yield
     # Shutdown: Code here runs when the application stops
