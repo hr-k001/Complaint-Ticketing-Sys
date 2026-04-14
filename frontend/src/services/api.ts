@@ -100,6 +100,8 @@ export const getAgentDashboard = () => api.get<DashboardStats>('/agent/dashboard
 // Admin endpoints
 export const getAdminDashboard = () => api.get('/admin/dashboard');
 export const getAgentsList = () => api.get('/admin/agents');
+export const assignTicket = (ticketNumber: string, agentNumber: string) =>
+    api.post('/admin/assign-ticket', { ticket_number: ticketNumber, agent_number: agentNumber });
 
 // ========== COMMENT ENDPOINTS ==========
 export const getTicketComments = (ticketId: string) => 

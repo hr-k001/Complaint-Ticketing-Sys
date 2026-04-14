@@ -5,7 +5,8 @@ import {
     getTicketComments,
     addComment,
     updateTicketStatus,
-    getUserTickets  // To get all tickets
+    getUserTickets,
+    assignTicket 
 } from '../services/api';
 import { AxiosError } from 'axios';
 import Container from '@mui/material/Container';
@@ -43,6 +44,7 @@ import ListItemText from '@mui/material/ListItemText';
 import ListItemAvatar from '@mui/material/ListItemAvatar';
 import Divider from '@mui/material/Divider';
 import Tooltip from '@mui/material/Tooltip';
+import Snackbar from '@mui/material/Snackbar';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import PeopleIcon from '@mui/icons-material/People';
 import AssignmentIcon from '@mui/icons-material/Assignment';
@@ -51,8 +53,9 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import PendingIcon from '@mui/icons-material/Pending';
 import CommentIcon from '@mui/icons-material/Comment';
 import EditIcon from '@mui/icons-material/Edit';
-import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
 import CloseIcon from '@mui/icons-material/Close';
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
+
 
 interface DashboardData {
     total_tickets: number;
@@ -61,7 +64,9 @@ interface DashboardData {
     resolved_tickets: number;
     closed_tickets: number;
     escalated_tickets: number;
-    overdue_tickets?: number;
+    high_priority_tickets?: number;
+    medium_priority_tickets?: number;
+    low_priority_tickets?: number;
 }
 
 interface Agent {
@@ -83,8 +88,7 @@ interface Ticket {
     created_at: string;
     due_date: string;
     is_escalated: boolean;
-    user_id?: string;
-    assigned_agent_id?: string;
+    assigned_to?: string;
     user?: {
         full_name: string;
         email: string;
@@ -108,16 +112,26 @@ const AdminDashboard: React.FC = () => {
     const [loadingTickets, setLoadingTickets] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
     const [tabValue, setTabValue] = useState<number>(0);
-    
-    // Dialog states
+    const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
+        open: false, message: '', severity: 'success'
+    });
+
+    // Status dialog
     const [statusDialogOpen, setStatusDialogOpen] = useState<boolean>(false);
     const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
     const [newStatus, setNewStatus] = useState<string>('');
+    const [updatingStatus, setUpdatingStatus] = useState<boolean>(false);
+
+    // Comments dialog
     const [commentsDialogOpen, setCommentsDialogOpen] = useState<boolean>(false);
     const [comments, setComments] = useState<Comment[]>([]);
     const [newComment, setNewComment] = useState<string>('');
     const [loadingComments, setLoadingComments] = useState<boolean>(false);
-    const [updatingStatus, setUpdatingStatus] = useState<boolean>(false);
+
+    // ── Assign Agent dialog ──
+    const [assignDialogOpen, setAssignDialogOpen] = useState<boolean>(false);
+    const [selectedAgentNumber, setSelectedAgentNumber] = useState<string>('');
+    const [assigning, setAssigning] = useState<boolean>(false);
 
     useEffect(() => {
         loadDashboardData();
@@ -158,7 +172,7 @@ const AdminDashboard: React.FC = () => {
     const loadAllTickets = async (): Promise<void> => {
         try {
             setLoadingTickets(true);
-            const response = await getUserTickets(); // This gets all tickets for admin
+            const response = await getUserTickets();
             setTickets(response.data || []);
         } catch (err) {
             console.error('Error loading tickets:', err);
@@ -181,7 +195,6 @@ const AdminDashboard: React.FC = () => {
 
     const handleAddComment = async () => {
         if (!newComment.trim() || !selectedTicket) return;
-        
         try {
             await addComment(selectedTicket.id, newComment);
             setNewComment('');
@@ -194,7 +207,6 @@ const AdminDashboard: React.FC = () => {
 
     const handleUpdateStatus = async () => {
         if (!selectedTicket || !newStatus) return;
-        
         try {
             setUpdatingStatus(true);
             await updateTicketStatus(selectedTicket.id, newStatus);
@@ -203,11 +215,35 @@ const AdminDashboard: React.FC = () => {
             setStatusDialogOpen(false);
             setSelectedTicket(null);
             setNewStatus('');
+            setSnackbar({ open: true, message: 'Ticket status updated successfully', severity: 'success' });
         } catch (err) {
             console.error('Error updating status:', err);
             setError('Failed to update ticket status');
         } finally {
             setUpdatingStatus(false);
+        }
+    };
+
+    // ── Assign agent handler ──
+    const handleAssignAgent = async () => {
+        if (!selectedTicket || !selectedAgentNumber) return;
+        try {
+            setAssigning(true);
+            await assignTicket(selectedTicket.ticket_number, selectedAgentNumber);
+            await loadAllTickets();
+            await loadDashboardData();
+            setAssignDialogOpen(false);
+            setSelectedAgentNumber('');
+            setSnackbar({ open: true, message: 'Ticket assigned successfully', severity: 'success' });
+        } catch (err) {
+            const axiosErr = err as AxiosError<{ detail: string }>;
+            setSnackbar({
+                open: true,
+                message: axiosErr.response?.data?.detail || 'Failed to assign agent',
+                severity: 'error',
+            });
+        } finally {
+            setAssigning(false);
         }
     };
 
@@ -221,6 +257,14 @@ const AdminDashboard: React.FC = () => {
         setSelectedTicket(ticket);
         setCommentsDialogOpen(true);
         await loadComments(ticket.id);
+    };
+
+    const handleOpenAssignDialog = (ticket: Ticket) => {
+        setSelectedTicket(ticket);
+        // Pre-select the already-assigned agent if any
+        const currentAgent = agents.find(a => a.id === ticket.assigned_to);
+        setSelectedAgentNumber(currentAgent?.agent_number || '');
+        setAssignDialogOpen(true);
     };
 
     const getStatusColor = (status: string): string => {
@@ -245,7 +289,7 @@ const AdminDashboard: React.FC = () => {
     };
 
     const getStatusIcon = (status: string) => {
-        switch(status) {
+        switch (status) {
             case 'Resolved': return <CheckCircleIcon sx={{ color: '#4caf50' }} />;
             case 'Closed': return <CloseIcon sx={{ color: '#9e9e9e' }} />;
             case 'Escalated': return <WarningIcon sx={{ color: '#f44336' }} />;
@@ -276,12 +320,8 @@ const AdminDashboard: React.FC = () => {
     if (error) {
         return (
             <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-                <Alert severity="error" sx={{ mb: 2 }}>
-                    {error}
-                </Alert>
-                <Button variant="contained" onClick={loadDashboardData}>
-                    Retry
-                </Button>
+                <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
+                <Button variant="contained" onClick={loadDashboardData}>Retry</Button>
             </Container>
         );
     }
@@ -298,17 +338,11 @@ const AdminDashboard: React.FC = () => {
         <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
             {/* Header */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                <Typography variant="h4" gutterBottom>
-                    Admin Dashboard
-                </Typography>
-                <Button 
-                    variant="outlined" 
+                <Typography variant="h4" gutterBottom>Admin Dashboard</Typography>
+                <Button
+                    variant="outlined"
                     startIcon={<RefreshIcon />}
-                    onClick={() => {
-                        loadDashboardData();
-                        loadAgentsList();
-                        loadAllTickets();
-                    }}
+                    onClick={() => { loadDashboardData(); loadAgentsList(); loadAllTickets(); }}
                 >
                     Refresh All
                 </Button>
@@ -316,79 +350,30 @@ const AdminDashboard: React.FC = () => {
 
             {/* Stats Cards */}
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3, mb: 4 }}>
-                <Box sx={{ flex: '1 1 180px', minWidth: '160px' }}>
-                    <Card>
-                        <CardContent>
-                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                                <AssignmentIcon sx={{ color: '#1976d2', mr: 1 }} />
-                                <Typography color="textSecondary">Total Tickets</Typography>
-                            </Box>
-                            <Typography variant="h3">{dashboard.total_tickets}</Typography>
-                        </CardContent>
-                    </Card>
-                </Box>
-
-                <Box sx={{ flex: '1 1 180px', minWidth: '160px' }}>
-                    <Card>
-                        <CardContent>
-                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                                <PendingIcon sx={{ color: '#ff9800', mr: 1 }} />
-                                <Typography color="textSecondary">Open Tickets</Typography>
-                            </Box>
-                            <Typography variant="h3" sx={{ color: '#ff9800' }}>{dashboard.open_tickets}</Typography>
-                        </CardContent>
-                    </Card>
-                </Box>
-
-                <Box sx={{ flex: '1 1 180px', minWidth: '160px' }}>
-                    <Card>
-                        <CardContent>
-                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                                <CheckCircleIcon sx={{ color: '#4caf50', mr: 1 }} />
-                                <Typography color="textSecondary">Resolved</Typography>
-                            </Box>
-                            <Typography variant="h3" sx={{ color: '#4caf50' }}>{dashboard.resolved_tickets}</Typography>
-                        </CardContent>
-                    </Card>
-                </Box>
-
-                <Box sx={{ flex: '1 1 180px', minWidth: '160px' }}>
-                    <Card>
-                        <CardContent>
-                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                                <WarningIcon sx={{ color: '#f44336', mr: 1 }} />
-                                <Typography color="textSecondary">Escalated</Typography>
-                            </Box>
-                            <Typography variant="h3" sx={{ color: '#f44336' }}>{dashboard.escalated_tickets}</Typography>
-                        </CardContent>
-                    </Card>
-                </Box>
-
-                <Box sx={{ flex: '1 1 180px', minWidth: '160px' }}>
-                    <Card>
-                        <CardContent>
-                            <Typography color="textSecondary">In Progress</Typography>
-                            <Typography variant="h4" sx={{ color: '#2196f3' }}>{dashboard.in_progress_tickets}</Typography>
-                        </CardContent>
-                    </Card>
-                </Box>
-
-                <Box sx={{ flex: '1 1 180px', minWidth: '160px' }}>
-                    <Card>
-                        <CardContent>
-                            <Typography color="textSecondary">Closed</Typography>
-                            <Typography variant="h4" sx={{ color: '#9e9e9e' }}>{dashboard.closed_tickets}</Typography>
-                        </CardContent>
-                    </Card>
-                </Box>
+                {[
+                    { label: 'Total Tickets', value: dashboard.total_tickets, color: '#1976d2', icon: <AssignmentIcon sx={{ color: '#1976d2', mr: 1 }} /> },
+                    { label: 'Open Tickets', value: dashboard.open_tickets, color: '#ff9800', icon: <PendingIcon sx={{ color: '#ff9800', mr: 1 }} /> },
+                    { label: 'Resolved', value: dashboard.resolved_tickets, color: '#4caf50', icon: <CheckCircleIcon sx={{ color: '#4caf50', mr: 1 }} /> },
+                    { label: 'Escalated', value: dashboard.escalated_tickets, color: '#f44336', icon: <WarningIcon sx={{ color: '#f44336', mr: 1 }} /> },
+                    { label: 'In Progress', value: dashboard.in_progress_tickets, color: '#2196f3', icon: null },
+                    { label: 'Closed', value: dashboard.closed_tickets, color: '#9e9e9e', icon: null },
+                ].map(({ label, value, color, icon }) => (
+                    <Box key={label} sx={{ flex: '1 1 180px', minWidth: '160px' }}>
+                        <Card>
+                            <CardContent>
+                                {icon && <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>{icon}<Typography color="textSecondary">{label}</Typography></Box>}
+                                {!icon && <Typography color="textSecondary">{label}</Typography>}
+                                <Typography variant="h3" sx={{ color }}>{value}</Typography>
+                            </CardContent>
+                        </Card>
+                    </Box>
+                ))}
             </Box>
 
-            {/* Tickets Management Section */}
+            {/* Tickets Management */}
             <Paper sx={{ p: 2, mb: 3 }}>
-                <Typography variant="h5" gutterBottom sx={{ mb: 2 }}>
-                    Ticket Management
-                </Typography>
-                
+                <Typography variant="h5" gutterBottom sx={{ mb: 2 }}>Ticket Management</Typography>
+
                 <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)} sx={{ mb: 2 }}>
                     <Tab label="All Tickets" />
                     <Tab label="Open" />
@@ -399,9 +384,7 @@ const AdminDashboard: React.FC = () => {
                 </Tabs>
 
                 {loadingTickets ? (
-                    <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
-                        <CircularProgress />
-                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>
                 ) : (
                     <TableContainer>
                         <Table>
@@ -415,94 +398,88 @@ const AdminDashboard: React.FC = () => {
                                     <TableCell><strong>Priority</strong></TableCell>
                                     <TableCell><strong>Created</strong></TableCell>
                                     <TableCell><strong>Due Date</strong></TableCell>
+                                    <TableCell><strong>Assigned Agent</strong></TableCell>
                                     <TableCell><strong>Actions</strong></TableCell>
                                 </TableRow>
                             </TableHead>
                             <TableBody>
                                 {filteredTickets().length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={9} align="center">
-                                            <Typography sx={{ py: 3 }} color="textSecondary">
-                                                No tickets found
-                                            </Typography>
+                                        <TableCell colSpan={10} align="center">
+                                            <Typography sx={{ py: 3 }} color="textSecondary">No tickets found</Typography>
                                         </TableCell>
                                     </TableRow>
                                 ) : (
-                                    filteredTickets().map((ticket) => (
-                                        <TableRow key={ticket.id} hover>
-                                            <TableCell>
-                                                <strong>{ticket.ticket_number}</strong>
-                                            </TableCell>
-                                            <TableCell>{ticket.title}</TableCell>
-                                            <TableCell>
-                                                <Chip 
-                                                    label={ticket.user?.full_name || 'Unknown'} 
-                                                    size="small" 
-                                                    variant="outlined"
-                                                />
-                                            </TableCell>
-                                            <TableCell>
-                                                <Chip label={ticket.category} size="small" variant="outlined" />
-                                            </TableCell>
-                                            <TableCell>
-                                                <Chip 
-                                                    icon={getStatusIcon(ticket.status)}
-                                                    label={ticket.status} 
-                                                    size="small"
-                                                    sx={{ 
-                                                        backgroundColor: getStatusColor(ticket.status), 
-                                                        color: 'white',
-                                                        fontWeight: 'bold'
-                                                    }}
-                                                />
-                                            </TableCell>
-                                            <TableCell>
-                                                <Chip 
-                                                    label={ticket.priority} 
-                                                    size="small"
-                                                    sx={{ 
-                                                        backgroundColor: getPriorityColor(ticket.priority), 
-                                                        color: 'white',
-                                                        fontWeight: 'bold'
-                                                    }}
-                                                />
-                                            </TableCell>
-                                            <TableCell>
-                                                {new Date(ticket.created_at).toLocaleDateString()}
-                                            </TableCell>
-                                            <TableCell>
-                                                {ticket.due_date ? (
-                                                    <span style={{ 
-                                                        color: new Date(ticket.due_date) < new Date() && ticket.status !== 'Resolved' ? '#f44336' : 'inherit'
-                                                    }}>
-                                                        {new Date(ticket.due_date).toLocaleDateString()}
-                                                    </span>
-                                                ) : 'N/A'}
-                                            </TableCell>
-                                            <TableCell>
-                                                <Box sx={{ display: 'flex', gap: 1 }}>
-                                                    <Tooltip title="Update Status">
-                                                        <IconButton 
-                                                            size="small" 
-                                                            onClick={() => handleOpenStatusDialog(ticket)}
-                                                            sx={{ color: '#2196f3' }}
-                                                        >
-                                                            <EditIcon />
-                                                        </IconButton>
-                                                    </Tooltip>
-                                                    <Tooltip title="View Comments">
-                                                        <IconButton 
-                                                            size="small" 
-                                                            onClick={() => handleOpenCommentsDialog(ticket)}
-                                                            sx={{ color: '#4caf50' }}
-                                                        >
-                                                            <CommentIcon />
-                                                        </IconButton>
-                                                    </Tooltip>
-                                                </Box>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))
+                                    filteredTickets().map((ticket) => {
+                                        const assignedAgent = agents.find(a => a.id === ticket.assigned_to);
+                                        return (
+                                            <TableRow key={ticket.id} hover>
+                                                <TableCell><strong>{ticket.ticket_number}</strong></TableCell>
+                                                <TableCell>{ticket.title}</TableCell>
+                                                <TableCell>
+                                                    <Chip label={ticket.user?.full_name || 'Unknown'} size="small" variant="outlined" />
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Chip label={ticket.category} size="small" variant="outlined" />
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Chip
+                                                        icon={getStatusIcon(ticket.status)}
+                                                        label={ticket.status}
+                                                        size="small"
+                                                        sx={{ backgroundColor: getStatusColor(ticket.status), color: 'white', fontWeight: 'bold' }}
+                                                    />
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Chip
+                                                        label={ticket.priority}
+                                                        size="small"
+                                                        sx={{ backgroundColor: getPriorityColor(ticket.priority), color: 'white', fontWeight: 'bold' }}
+                                                    />
+                                                </TableCell>
+                                                <TableCell>{new Date(ticket.created_at).toLocaleDateString()}</TableCell>
+                                                <TableCell>
+                                                    {ticket.due_date ? (
+                                                        <span style={{ color: new Date(ticket.due_date) < new Date() && ticket.status !== 'Resolved' ? '#f44336' : 'inherit' }}>
+                                                            {new Date(ticket.due_date).toLocaleDateString()}
+                                                        </span>
+                                                    ) : 'N/A'}
+                                                </TableCell>
+                                                {/* Assigned Agent column */}
+                                                <TableCell>
+                                                    {assignedAgent ? (
+                                                        <Chip
+                                                            label={assignedAgent.full_name}
+                                                            size="small"
+                                                            sx={{ backgroundColor: '#e3f2fd', color: '#1565c0' }}
+                                                        />
+                                                    ) : (
+                                                        <Chip label="Unassigned" size="small" variant="outlined" sx={{ color: '#9e9e9e' }} />
+                                                    )}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Box sx={{ display: 'flex', gap: 0.5 }}>
+                                                        <Tooltip title="Update Status">
+                                                            <IconButton size="small" onClick={() => handleOpenStatusDialog(ticket)} sx={{ color: '#2196f3' }}>
+                                                                <EditIcon fontSize="small" />
+                                                            </IconButton>
+                                                        </Tooltip>
+                                                        <Tooltip title="View Comments">
+                                                            <IconButton size="small" onClick={() => handleOpenCommentsDialog(ticket)} sx={{ color: '#4caf50' }}>
+                                                                <CommentIcon fontSize="small" />
+                                                            </IconButton>
+                                                        </Tooltip>
+                                                        {/* ── NEW: Assign Agent button ── */}
+                                                        <Tooltip title="Assign Agent">
+                                                            <IconButton size="small" onClick={() => handleOpenAssignDialog(ticket)} sx={{ color: '#9c27b0' }}>
+                                                                <PersonAddIcon fontSize="small" />
+                                                            </IconButton>
+                                                        </Tooltip>
+                                                    </Box>
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })
                                 )}
                             </TableBody>
                         </Table>
@@ -514,15 +491,10 @@ const AdminDashboard: React.FC = () => {
             <Paper sx={{ p: 2 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                     <PeopleIcon sx={{ mr: 1, color: '#1976d2' }} />
-                    <Typography variant="h5">
-                        Support Agents
-                    </Typography>
+                    <Typography variant="h5">Support Agents</Typography>
                 </Box>
-                
                 {loadingAgents ? (
-                    <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
-                        <CircularProgress />
-                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>
                 ) : (
                     <TableContainer>
                         <Table>
@@ -532,49 +504,33 @@ const AdminDashboard: React.FC = () => {
                                     <TableCell><strong>Email</strong></TableCell>
                                     <TableCell><strong>Agent Number</strong></TableCell>
                                     <TableCell><strong>Assigned Tickets</strong></TableCell>
-                                    <TableCell><strong>Actions</strong></TableCell>
                                 </TableRow>
                             </TableHead>
                             <TableBody>
                                 {agents.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={5} align="center">
-                                            <Typography sx={{ py: 3 }} color="textSecondary">
-                                                No agents found
-                                            </Typography>
+                                        <TableCell colSpan={4} align="center">
+                                            <Typography sx={{ py: 3 }} color="textSecondary">No agents found</Typography>
                                         </TableCell>
                                     </TableRow>
                                 ) : (
                                     agents.map((agent) => (
                                         <TableRow key={agent.id} hover>
-                                            <TableCell>
-                                                <strong>{agent.full_name}</strong>
-                                            </TableCell>
+                                            <TableCell><strong>{agent.full_name}</strong></TableCell>
                                             <TableCell>{agent.email}</TableCell>
                                             <TableCell>
-                                                <Chip 
-                                                    label={agent.agent_number || 'N/A'} 
-                                                    size="small"
-                                                    variant="outlined"
-                                                />
+                                                <Chip label={agent.agent_number || 'N/A'} size="small" variant="outlined" />
                                             </TableCell>
                                             <TableCell>
-                                                <Chip 
-                                                    label={agent.assigned_tickets_count || 0} 
+                                                <Chip
+                                                    label={agent.assigned_tickets_count || 0}
                                                     size="small"
-                                                    sx={{ 
-                                                        backgroundColor: (agent.assigned_tickets_count || 0) > 10 ? '#f44336' : 
-                                                                       (agent.assigned_tickets_count || 0) > 5 ? '#ff9800' : '#4caf50',
+                                                    sx={{
+                                                        backgroundColor: (agent.assigned_tickets_count || 0) > 10 ? '#f44336' :
+                                                            (agent.assigned_tickets_count || 0) > 5 ? '#ff9800' : '#4caf50',
                                                         color: 'white'
                                                     }}
                                                 />
-                                            </TableCell>
-                                            <TableCell>
-                                                <Tooltip title="View Assigned Tickets">
-                                                    <IconButton size="small" sx={{ color: '#1976d2' }}>
-                                                        <AssignmentTurnedInIcon />
-                                                    </IconButton>
-                                                </Tooltip>
                                             </TableCell>
                                         </TableRow>
                                     ))
@@ -585,21 +541,17 @@ const AdminDashboard: React.FC = () => {
                 )}
             </Paper>
 
-            {/* Update Status Dialog */}
+            {/* ── Update Status Dialog ── */}
             <Dialog open={statusDialogOpen} onClose={() => !updatingStatus && setStatusDialogOpen(false)}>
                 <DialogTitle>Update Ticket Status</DialogTitle>
                 <DialogContent>
                     <Box sx={{ mt: 2 }}>
                         <Typography variant="body2" gutterBottom>
-                            Ticket: <strong>{selectedTicket?.ticket_number}</strong> - {selectedTicket?.title}
+                            Ticket: <strong>{selectedTicket?.ticket_number}</strong> — {selectedTicket?.title}
                         </Typography>
                         <FormControl fullWidth sx={{ mt: 2 }}>
                             <InputLabel>Status</InputLabel>
-                            <Select
-                                value={newStatus}
-                                label="Status"
-                                onChange={(e) => setNewStatus(e.target.value)}
-                            >
+                            <Select value={newStatus} label="Status" onChange={(e) => setNewStatus(e.target.value)}>
                                 <MenuItem value="Open">Open</MenuItem>
                                 <MenuItem value="In Progress">In Progress</MenuItem>
                                 <MenuItem value="Resolved">Resolved</MenuItem>
@@ -610,79 +562,87 @@ const AdminDashboard: React.FC = () => {
                     </Box>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => setStatusDialogOpen(false)} disabled={updatingStatus}>
-                        Cancel
-                    </Button>
-                    <Button 
-                        onClick={handleUpdateStatus} 
-                        variant="contained" 
-                        disabled={updatingStatus || newStatus === selectedTicket?.status}
-                    >
+                    <Button onClick={() => setStatusDialogOpen(false)} disabled={updatingStatus}>Cancel</Button>
+                    <Button onClick={handleUpdateStatus} variant="contained" disabled={updatingStatus || newStatus === selectedTicket?.status}>
                         {updatingStatus ? <CircularProgress size={24} /> : 'Update'}
                     </Button>
                 </DialogActions>
             </Dialog>
 
-            {/* Comments Dialog */}
-            <Dialog 
-                open={commentsDialogOpen} 
-                onClose={() => setCommentsDialogOpen(false)}
-                maxWidth="md"
-                fullWidth
-            >
+            {/* ── Assign Agent Dialog ── */}
+            <Dialog open={assignDialogOpen} onClose={() => !assigning && setAssignDialogOpen(false)} maxWidth="xs" fullWidth>
+                <DialogTitle>Assign Agent</DialogTitle>
+                <DialogContent>
+                    <Box sx={{ mt: 1 }}>
+                        <Typography variant="body2" gutterBottom sx={{ mb: 2 }}>
+                            Ticket: <strong>{selectedTicket?.ticket_number}</strong> — {selectedTicket?.title}
+                        </Typography>
+                        <FormControl fullWidth>
+                            <InputLabel>Select Agent</InputLabel>
+                            <Select
+                                value={selectedAgentNumber}
+                                label="Select Agent"
+                                onChange={(e) => setSelectedAgentNumber(e.target.value)}
+                            >
+                                {agents.map((agent) => (
+                                    <MenuItem key={agent.id} value={agent.agent_number || ''}>
+                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                                            <span>{agent.full_name}</span>
+                                            <Chip
+                                                label={`${agent.assigned_tickets_count ?? 0} tickets`}
+                                                size="small"
+                                                sx={{
+                                                    ml: 1,
+                                                    backgroundColor: (agent.assigned_tickets_count || 0) > 10 ? '#f44336' :
+                                                        (agent.assigned_tickets_count || 0) > 5 ? '#ff9800' : '#4caf50',
+                                                    color: 'white',
+                                                    fontSize: '11px'
+                                                }}
+                                            />
+                                        </Box>
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+                    </Box>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setAssignDialogOpen(false)} disabled={assigning}>Cancel</Button>
+                    <Button onClick={handleAssignAgent} variant="contained" disabled={assigning || !selectedAgentNumber}>
+                        {assigning ? <CircularProgress size={24} /> : 'Assign'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* ── Comments Dialog ── */}
+            <Dialog open={commentsDialogOpen} onClose={() => setCommentsDialogOpen(false)} maxWidth="md" fullWidth>
                 <DialogTitle>
                     <Box>
-                        <Typography variant="h6">
-                            Ticket #{selectedTicket?.ticket_number}
-                        </Typography>
-                        <Typography variant="body2" color="textSecondary">
-                            {selectedTicket?.title}
-                        </Typography>
+                        <Typography variant="h6">Ticket #{selectedTicket?.ticket_number}</Typography>
+                        <Typography variant="body2" color="textSecondary">{selectedTicket?.title}</Typography>
                         <Box sx={{ mt: 1 }}>
-                            <Chip 
-                                label={selectedTicket?.status} 
-                                size="small"
-                                sx={{ backgroundColor: getStatusColor(selectedTicket?.status || ''), color: 'white' }}
-                            />
-                            <Chip 
-                                label={selectedTicket?.priority} 
-                                size="small"
-                                sx={{ ml: 1, backgroundColor: getPriorityColor(selectedTicket?.priority || ''), color: 'white' }}
-                            />
+                            <Chip label={selectedTicket?.status} size="small" sx={{ backgroundColor: getStatusColor(selectedTicket?.status || ''), color: 'white' }} />
+                            <Chip label={selectedTicket?.priority} size="small" sx={{ ml: 1, backgroundColor: getPriorityColor(selectedTicket?.priority || ''), color: 'white' }} />
                         </Box>
                     </Box>
                 </DialogTitle>
                 <DialogContent>
                     <Divider sx={{ my: 2 }} />
-                    
-                    <Typography variant="subtitle1" gutterBottom>
-                        Comments
-                    </Typography>
-                    
+                    <Typography variant="subtitle1" gutterBottom>Comments</Typography>
                     {loadingComments ? (
-                        <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
-                            <CircularProgress />
-                        </Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>
                     ) : (
                         <List>
                             {comments.length === 0 ? (
-                                <Typography color="textSecondary" sx={{ p: 2, textAlign: 'center' }}>
-                                    No comments yet
-                                </Typography>
+                                <Typography color="textSecondary" sx={{ p: 2, textAlign: 'center' }}>No comments yet</Typography>
                             ) : (
                                 comments.map((comment) => (
                                     <ListItem key={comment.id} alignItems="flex-start">
                                         <ListItemAvatar>
-                                            <Avatar>
-                                                <CommentIcon />
-                                            </Avatar>
+                                            <Avatar><CommentIcon /></Avatar>
                                         </ListItemAvatar>
                                         <ListItemText
-                                            primary={
-                                                <Typography variant="body2" color="textSecondary">
-                                                    {new Date(comment.created_at).toLocaleString()}
-                                                </Typography>
-                                            }
+                                            primary={<Typography variant="body2" color="textSecondary">{new Date(comment.created_at).toLocaleString()}</Typography>}
                                             secondary={comment.message}
                                         />
                                     </ListItem>
@@ -690,7 +650,6 @@ const AdminDashboard: React.FC = () => {
                             )}
                         </List>
                     )}
-                    
                     <Box sx={{ mt: 2 }}>
                         <TextField
                             label="Add a comment"
@@ -701,22 +660,24 @@ const AdminDashboard: React.FC = () => {
                             onChange={(e) => setNewComment(e.target.value)}
                             placeholder="Type your message here..."
                         />
-                        <Button 
-                            variant="contained" 
-                            onClick={handleAddComment}
-                            sx={{ mt: 1 }}
-                            disabled={!newComment.trim()}
-                        >
+                        <Button variant="contained" onClick={handleAddComment} sx={{ mt: 1 }} disabled={!newComment.trim()}>
                             Post Comment
                         </Button>
                     </Box>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => setCommentsDialogOpen(false)}>
-                        Close
-                    </Button>
+                    <Button onClick={() => setCommentsDialogOpen(false)}>Close</Button>
                 </DialogActions>
             </Dialog>
+
+            {/* Snackbar feedback */}
+            <Snackbar
+                open={snackbar.open}
+                autoHideDuration={4000}
+                onClose={() => setSnackbar(s => ({ ...s, open: false }))}
+                message={snackbar.message}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+            />
         </Container>
     );
 };

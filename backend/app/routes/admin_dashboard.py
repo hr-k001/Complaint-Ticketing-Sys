@@ -7,7 +7,7 @@ from app.schemas.user_schema import UserRole
 from app.services.admin_dashboard_service import get_admin_summary, get_agents_overview, list_agents
 from app.services.ticket_service import assign_ticket_to_agent
 
-router = APIRouter(prefix="/admin", tags=["Admin"])
+router = APIRouter(tags=["Admin"])
 
 @router.get("/dashboard", dependencies=[Depends(require_roles(UserRole.ADMIN))])
 def dashboard(db: Session = Depends(get_db)):
