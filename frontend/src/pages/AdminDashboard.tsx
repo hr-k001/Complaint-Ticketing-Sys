@@ -740,8 +740,7 @@ const AdminDashboard: React.FC = () => {
                                 <Box sx={{ mb: 3 }}>
                                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
                                         <Typography variant="body2" color="textSecondary">SLA Usage</Typography>
-                                        <Typography variant="body2" fontWeight={500}
-                                            sx={{ color: getSlaColor(agingDetails.sla_status, agingDetails.sla_remaining_hours) }}>
+                                        <Typography variant="body2" sx={{ fontWeight: 500, color: getSlaColor(agingDetails.sla_status, agingDetails.sla_remaining_hours) }}>
                                             {getSlaProgress(agingDetails)}%
                                         </Typography>
                                     </Box>
@@ -785,9 +784,9 @@ const AdminDashboard: React.FC = () => {
                                     { label: 'Due Date', value: agingDetails.due_date ? new Date(agingDetails.due_date).toLocaleString() : 'N/A' },
                                 ].map(({ label, value }) => (
                                     <Box key={label} sx={{ backgroundColor: '#f9f9f9', borderRadius: 1, p: 1.5 }}>
-                                        <Typography variant="caption" color="textSecondary" display="block">{label}</Typography>
+                                        <Typography variant="caption" color="textSecondary" sx={{ display: 'block' }}>{label}</Typography>
                                         {typeof value === 'string'
-                                            ? <Typography variant="body2" fontWeight={500}>{value}</Typography>
+                                            ? <Typography variant="body2" sx={{ fontWeight: 500 }}>{value}</Typography>
                                             : value}
                                     </Box>
                                 ))}

@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from app.schemas.ticket_schema import TicketPriority
 
 PRIORITY_SLA_DAYS = {
@@ -9,12 +9,12 @@ PRIORITY_SLA_DAYS = {
 
 def calculate_due_date(priority: TicketPriority, created_at: datetime | None = None) -> datetime:
     """Calculate due date based on priority (in days)"""
-    created_at = created_at or datetime.utcnow()
+    created_at = created_at or datetime.now(timezone.utc)
     return created_at + timedelta(days=PRIORITY_SLA_DAYS[priority])
 
 def is_ticket_overdue(due_date: datetime) -> bool:
     """Check if ticket is overdue"""
-    return datetime.utcnow() > due_date
+    return datetime.now(timezone.utc) > due_date
 
 # Add this function for compatibility with ticket_service.py
 def calculate_sla_due_date(priority: str) -> datetime:
