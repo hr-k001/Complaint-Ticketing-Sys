@@ -102,6 +102,8 @@ export const getAdminDashboard = () => api.get('/admin/dashboard');
 export const getAgentsList = () => api.get('/admin/agents');
 export const assignTicket = (ticketNumber: string, agentNumber: string) =>
     api.post('/admin/assign-ticket', { ticket_number: ticketNumber, agent_number: agentNumber });
+export const getTicketAgingDetails = (ticketId: string) =>
+    api.get(`/analytics/tickets/${ticketId}/aging-details`);
 
 // ========== COMMENT ENDPOINTS ==========
 export const getTicketComments = (ticketId: string) => 

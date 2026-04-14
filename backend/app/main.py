@@ -66,7 +66,7 @@ app.include_router(admin_dashboard.router, prefix="/admin", tags=["Admin"])
 app.include_router(reports.router, prefix="/reports", tags=["Reports"])
 
 # Analytics routes
-app.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
+app.include_router(analytics.router, prefix="/analytics")
 
 
 # ========== Root Endpoint ==========
