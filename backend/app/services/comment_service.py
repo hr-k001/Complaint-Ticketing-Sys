@@ -19,7 +19,7 @@ def _get_ticket_for_comments(db: Session, ticket_id: str, current_user: User) ->
     # Role-based permission check
     if current_user.role == UserRole.USER.value:
         # Users can only see their own tickets
-        if ticket.user_id != current_user.id:
+        if ticket.created_by != current_user.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, 
                 detail="Not allowed to access this ticket"
@@ -53,16 +53,16 @@ def _check_comment_permission(ticket: Ticket, current_user: User, is_adding: boo
     elif current_user.role == UserRole.USER.value:
         # Decide: Should users be allowed to comment?
         # Option 1: Users cannot comment at all (strict)
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Users cannot add comments. Only agents and admins can."
-        )
+        # raise HTTPException(
+        #     status_code=status.HTTP_403_FORBIDDEN,
+        #     detail="Users cannot add comments. Only agents and admins can."
+        # )
         # Option 2: Users can only comment on their own tickets (less strict)
-        # if ticket.user_id != current_user.id:
-        #     raise HTTPException(
-        #         status_code=status.HTTP_403_FORBIDDEN,
-        #         detail="Users can only comment on their own tickets"
-        #     )
+        if ticket.created_by != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Users can only comment on their own tickets"
+            )
 
 
 def add_comment(db: Session, ticket_id: str, message: str, current_user: User) -> Comment:
@@ -87,16 +87,15 @@ def add_comment(db: Session, ticket_id: str, message: str, current_user: User) -
         author_id=current_user.id,
         message=message.strip(),
         created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),  # Add if you have this field
     )
     db.add(comment)
     db.commit()
     db.refresh(comment)
-    
-    # Optional: Add comment to ticket's activity log or update ticket updated_at
+
+    # ticket.updated_at is fine — Ticket model DOES have this field
     ticket.updated_at = datetime.utcnow()
     db.commit()
-    
+
     return comment
 
 

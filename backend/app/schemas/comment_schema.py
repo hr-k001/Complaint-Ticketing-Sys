@@ -34,11 +34,11 @@ class CommentResponse(BaseModel):
     """Schema for comment response"""
     id: str
     ticket_id: str
-    author_id: int  # Changed from str to int (user IDs are typically integers)
+    author_id: str        # ← str, not int (User.id is String(36))
     message: str
     created_at: datetime
-    updated_at: Optional[datetime] = None  # Add if you have this field
-    
+    # Remove updated_at — Comment model doesn't have this column
+
     model_config = {"from_attributes": True}
 
 

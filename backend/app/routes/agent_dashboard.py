@@ -8,7 +8,7 @@ from app.schemas.user_schema import UserRole
 from app.services.agent_dashboard_service import get_agent_summary
 from app.services.ticket_service import list_assigned_tickets, update_ticket_status
 
-router = APIRouter(prefix="/agent", tags=["Agent"])
+router = APIRouter(tags=["Agent"])
 
 @router.get("/dashboard", dependencies=[Depends(require_roles(UserRole.AGENT))])
 def dashboard(db: Session = Depends(get_db), user: User = Depends(get_current_user)):

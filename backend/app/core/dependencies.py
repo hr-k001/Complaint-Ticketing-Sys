@@ -121,7 +121,7 @@ def get_ticket_visibility_filter(current_user: User = Depends(get_current_user))
         return {"filter_type": "owned", "user_id": current_user.id}
 
 
-def can_modify_ticket(ticket_user_id: int, assigned_to_id: Optional[int], current_user: User) -> bool:
+def can_modify_ticket(ticket_user_id: str, assigned_to_id: Optional[str], current_user: User) -> bool:
     """
     Check if current user can modify a specific ticket.
     Use this before allowing status updates or other modifications.
@@ -134,7 +134,7 @@ def can_modify_ticket(ticket_user_id: int, assigned_to_id: Optional[int], curren
         return ticket_user_id == current_user.id
 
 
-def can_comment_on_ticket(ticket_user_id: int, assigned_to_id: Optional[int], current_user: User) -> bool:
+def can_comment_on_ticket(ticket_user_id: str, assigned_to_id: Optional[str], current_user: User) -> bool:
     """
     Check if current user can comment on a ticket.
     """
@@ -147,7 +147,7 @@ def can_comment_on_ticket(ticket_user_id: int, assigned_to_id: Optional[int], cu
         return ticket_user_id == current_user.id
 
 
-def can_view_ticket(ticket_user_id: int, assigned_to_id: Optional[int], current_user: User) -> bool:
+def can_view_ticket(ticket_user_id: str, assigned_to_id: Optional[str], current_user: User) -> bool:
     """
     Check if current user can view a specific ticket.
     """

@@ -40,7 +40,7 @@ def get_ticket_comments(
         ) from e
     
     # Check if user can view comments on this ticket
-    if not can_view_ticket(ticket.user_id, ticket.assigned_to, current_user):
+    if not can_view_ticket(ticket.created_by, ticket.assigned_to, current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have permission to view comments on this ticket"
@@ -73,7 +73,7 @@ def create_ticket_comment(
         ) from e
     
     # Check commenting permissions
-    if not can_comment_on_ticket(ticket.user_id, ticket.assigned_to, current_user):
+    if not can_comment_on_ticket(ticket.created_by, ticket.assigned_to, current_user):
         # Provide specific error message based on role
         if current_user.role == UserRole.USER.value:
             raise HTTPException(
@@ -127,7 +127,7 @@ def get_my_comments(
     from sqlalchemy import select
     from app.core.models import Comment
     
-    query = select(Comment).where(Comment.user_id == current_user.id).order_by(Comment.created_at.desc())
+    query = select(Comment).where(Comment.author_id == current_user.id).order_by(Comment.created_at.desc())
     comments = db.execute(query).scalars().all()
     return comments
 
@@ -153,7 +153,7 @@ def user_add_comment(
         ) from e
     
     # Users can only comment on their own tickets
-    if ticket.user_id != current_user.id:
+    if ticket.created_by != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You can only comment on your own tickets"
