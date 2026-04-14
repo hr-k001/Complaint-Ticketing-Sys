@@ -8,7 +8,7 @@ from app.core.models import User
 from app.schemas.user_schema import UserRole
 from app.services.aging_services import AgingService
 
-router = APIRouter(prefix="/analytics", tags=["analytics"])
+router = APIRouter(tags=["analytics"])
 
 
 @router.get("/ticket-aging")
