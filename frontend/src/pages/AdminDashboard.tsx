@@ -6,7 +6,8 @@ import {
     addComment,
     updateTicketStatus,
     getUserTickets,
-    assignTicket 
+    assignTicket,
+    getTicketAgingDetails
 } from '../services/api';
 import { AxiosError } from 'axios';
 import Container from '@mui/material/Container';
@@ -45,6 +46,7 @@ import ListItemAvatar from '@mui/material/ListItemAvatar';
 import Divider from '@mui/material/Divider';
 import Tooltip from '@mui/material/Tooltip';
 import Snackbar from '@mui/material/Snackbar';
+import LinearProgress from '@mui/material/LinearProgress';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import PeopleIcon from '@mui/icons-material/People';
 import AssignmentIcon from '@mui/icons-material/Assignment';
@@ -55,7 +57,7 @@ import CommentIcon from '@mui/icons-material/Comment';
 import EditIcon from '@mui/icons-material/Edit';
 import CloseIcon from '@mui/icons-material/Close';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
-
+import QueryStatsIcon from '@mui/icons-material/QueryStats';
 
 interface DashboardData {
     total_tickets: number;
@@ -103,6 +105,22 @@ interface Comment {
     author_name?: string;
 }
 
+interface AgingDetails {
+    ticket_id: string;
+    ticket_number: string;
+    created_at: string;
+    current_time: string;
+    age_days: number;
+    age_hours: number;
+    age_minutes: number;
+    status: string;
+    priority: string;
+    due_date: string | null;
+    is_escalated: boolean;
+    sla_remaining_hours: number | null;
+    sla_status?: string;
+}
+
 const AdminDashboard: React.FC = () => {
     const [dashboard, setDashboard] = useState<DashboardData | null>(null);
     const [agents, setAgents] = useState<Agent[]>([]);
@@ -128,10 +146,15 @@ const AdminDashboard: React.FC = () => {
     const [newComment, setNewComment] = useState<string>('');
     const [loadingComments, setLoadingComments] = useState<boolean>(false);
 
-    // ── Assign Agent dialog ──
+    // Assign Agent dialog
     const [assignDialogOpen, setAssignDialogOpen] = useState<boolean>(false);
     const [selectedAgentNumber, setSelectedAgentNumber] = useState<string>('');
     const [assigning, setAssigning] = useState<boolean>(false);
+
+    // Aging Report dialog
+    const [agingDialogOpen, setAgingDialogOpen] = useState<boolean>(false);
+    const [agingDetails, setAgingDetails] = useState<AgingDetails | null>(null);
+    const [loadingAging, setLoadingAging] = useState<boolean>(false);
 
     useEffect(() => {
         loadDashboardData();
@@ -193,6 +216,22 @@ const AdminDashboard: React.FC = () => {
         }
     };
 
+    const handleOpenAgingReport = async (ticket: Ticket) => {
+        setSelectedTicket(ticket);
+        setAgingDetails(null);
+        setAgingDialogOpen(true);
+        try {
+            setLoadingAging(true);
+            const response = await getTicketAgingDetails(ticket.id);
+            setAgingDetails(response.data);
+        } catch (err) {
+            console.error('Error loading aging details:', err);
+            setSnackbar({ open: true, message: 'Failed to load aging report', severity: 'error' });
+        } finally {
+            setLoadingAging(false);
+        }
+    };
+
     const handleAddComment = async () => {
         if (!newComment.trim() || !selectedTicket) return;
         try {
@@ -224,7 +263,6 @@ const AdminDashboard: React.FC = () => {
         }
     };
 
-    // ── Assign agent handler ──
     const handleAssignAgent = async () => {
         if (!selectedTicket || !selectedAgentNumber) return;
         try {
@@ -261,7 +299,6 @@ const AdminDashboard: React.FC = () => {
 
     const handleOpenAssignDialog = (ticket: Ticket) => {
         setSelectedTicket(ticket);
-        // Pre-select the already-assigned agent if any
         const currentAgent = agents.find(a => a.id === ticket.assigned_to);
         setSelectedAgentNumber(currentAgent?.agent_number || '');
         setAssignDialogOpen(true);
@@ -280,12 +317,12 @@ const AdminDashboard: React.FC = () => {
 
     const getPriorityColor = (priority: string): string => {
         const colors: Record<string, string> = {
-            'Low': '#4caf50',
-            'Medium': '#ff9800',
-            'High': '#f44336',
-            'Critical': '#9c27b0'
+            'low': '#4caf50',
+            'medium': '#ff9800',
+            'high': '#f44336',
+            'critical': '#9c27b0'
         };
-        return colors[priority] || '#9e9e9e';
+        return colors[priority?.toLowerCase()] || '#9e9e9e';
     };
 
     const getStatusIcon = (status: string) => {
@@ -295,6 +332,19 @@ const AdminDashboard: React.FC = () => {
             case 'Escalated': return <WarningIcon sx={{ color: '#f44336' }} />;
             default: return <PendingIcon sx={{ color: '#ff9800' }} />;
         }
+    };
+
+    const getSlaColor = (slaStatus?: string, remainingHours?: number | null): string => {
+        if (slaStatus === 'Breached') return '#f44336';
+        if (remainingHours !== null && remainingHours !== undefined && remainingHours < 4) return '#ff9800';
+        return '#4caf50';
+    };
+
+    const getSlaProgress = (aging: AgingDetails): number => {
+        if (!aging.due_date) return 0;
+        const total = new Date(aging.due_date).getTime() - new Date(aging.created_at).getTime();
+        const elapsed = new Date(aging.current_time).getTime() - new Date(aging.created_at).getTime();
+        return Math.min(100, Math.round((elapsed / total) * 100));
     };
 
     const filteredTickets = () => {
@@ -339,11 +389,8 @@ const AdminDashboard: React.FC = () => {
             {/* Header */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                 <Typography variant="h4" gutterBottom>Admin Dashboard</Typography>
-                <Button
-                    variant="outlined"
-                    startIcon={<RefreshIcon />}
-                    onClick={() => { loadDashboardData(); loadAgentsList(); loadAllTickets(); }}
-                >
+                <Button variant="outlined" startIcon={<RefreshIcon />}
+                    onClick={() => { loadDashboardData(); loadAgentsList(); loadAllTickets(); }}>
                     Refresh All
                 </Button>
             </Box>
@@ -373,7 +420,6 @@ const AdminDashboard: React.FC = () => {
             {/* Tickets Management */}
             <Paper sx={{ p: 2, mb: 3 }}>
                 <Typography variant="h5" gutterBottom sx={{ mb: 2 }}>Ticket Management</Typography>
-
                 <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)} sx={{ mb: 2 }}>
                     <Tab label="All Tickets" />
                     <Tab label="Open" />
@@ -423,19 +469,12 @@ const AdminDashboard: React.FC = () => {
                                                     <Chip label={ticket.category} size="small" variant="outlined" />
                                                 </TableCell>
                                                 <TableCell>
-                                                    <Chip
-                                                        icon={getStatusIcon(ticket.status)}
-                                                        label={ticket.status}
-                                                        size="small"
-                                                        sx={{ backgroundColor: getStatusColor(ticket.status), color: 'white', fontWeight: 'bold' }}
-                                                    />
+                                                    <Chip icon={getStatusIcon(ticket.status)} label={ticket.status} size="small"
+                                                        sx={{ backgroundColor: getStatusColor(ticket.status), color: 'white', fontWeight: 'bold' }} />
                                                 </TableCell>
                                                 <TableCell>
-                                                    <Chip
-                                                        label={ticket.priority}
-                                                        size="small"
-                                                        sx={{ backgroundColor: getPriorityColor(ticket.priority), color: 'white', fontWeight: 'bold' }}
-                                                    />
+                                                    <Chip label={ticket.priority} size="small"
+                                                        sx={{ backgroundColor: getPriorityColor(ticket.priority), color: 'white', fontWeight: 'bold' }} />
                                                 </TableCell>
                                                 <TableCell>{new Date(ticket.created_at).toLocaleDateString()}</TableCell>
                                                 <TableCell>
@@ -445,14 +484,9 @@ const AdminDashboard: React.FC = () => {
                                                         </span>
                                                     ) : 'N/A'}
                                                 </TableCell>
-                                                {/* Assigned Agent column */}
                                                 <TableCell>
                                                     {assignedAgent ? (
-                                                        <Chip
-                                                            label={assignedAgent.full_name}
-                                                            size="small"
-                                                            sx={{ backgroundColor: '#e3f2fd', color: '#1565c0' }}
-                                                        />
+                                                        <Chip label={assignedAgent.full_name} size="small" sx={{ backgroundColor: '#e3f2fd', color: '#1565c0' }} />
                                                     ) : (
                                                         <Chip label="Unassigned" size="small" variant="outlined" sx={{ color: '#9e9e9e' }} />
                                                     )}
@@ -469,10 +503,14 @@ const AdminDashboard: React.FC = () => {
                                                                 <CommentIcon fontSize="small" />
                                                             </IconButton>
                                                         </Tooltip>
-                                                        {/* ── NEW: Assign Agent button ── */}
                                                         <Tooltip title="Assign Agent">
                                                             <IconButton size="small" onClick={() => handleOpenAssignDialog(ticket)} sx={{ color: '#9c27b0' }}>
                                                                 <PersonAddIcon fontSize="small" />
+                                                            </IconButton>
+                                                        </Tooltip>
+                                                        <Tooltip title="Aging Report">
+                                                            <IconButton size="small" onClick={() => handleOpenAgingReport(ticket)} sx={{ color: '#e65100' }}>
+                                                                <QueryStatsIcon fontSize="small" />
                                                             </IconButton>
                                                         </Tooltip>
                                                     </Box>
@@ -522,15 +560,12 @@ const AdminDashboard: React.FC = () => {
                                                 <Chip label={agent.agent_number || 'N/A'} size="small" variant="outlined" />
                                             </TableCell>
                                             <TableCell>
-                                                <Chip
-                                                    label={agent.assigned_tickets_count || 0}
-                                                    size="small"
+                                                <Chip label={agent.assigned_tickets_count || 0} size="small"
                                                     sx={{
                                                         backgroundColor: (agent.assigned_tickets_count || 0) > 10 ? '#f44336' :
                                                             (agent.assigned_tickets_count || 0) > 5 ? '#ff9800' : '#4caf50',
                                                         color: 'white'
-                                                    }}
-                                                />
+                                                    }} />
                                             </TableCell>
                                         </TableRow>
                                     ))
@@ -579,26 +614,18 @@ const AdminDashboard: React.FC = () => {
                         </Typography>
                         <FormControl fullWidth>
                             <InputLabel>Select Agent</InputLabel>
-                            <Select
-                                value={selectedAgentNumber}
-                                label="Select Agent"
-                                onChange={(e) => setSelectedAgentNumber(e.target.value)}
-                            >
+                            <Select value={selectedAgentNumber} label="Select Agent" onChange={(e) => setSelectedAgentNumber(e.target.value)}>
                                 {agents.map((agent) => (
                                     <MenuItem key={agent.id} value={agent.agent_number || ''}>
                                         <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
                                             <span>{agent.full_name}</span>
-                                            <Chip
-                                                label={`${agent.assigned_tickets_count ?? 0} tickets`}
-                                                size="small"
+                                            <Chip label={`${agent.assigned_tickets_count ?? 0} tickets`} size="small"
                                                 sx={{
                                                     ml: 1,
                                                     backgroundColor: (agent.assigned_tickets_count || 0) > 10 ? '#f44336' :
                                                         (agent.assigned_tickets_count || 0) > 5 ? '#ff9800' : '#4caf50',
-                                                    color: 'white',
-                                                    fontSize: '11px'
-                                                }}
-                                            />
+                                                    color: 'white', fontSize: '11px'
+                                                }} />
                                         </Box>
                                     </MenuItem>
                                 ))}
@@ -638,9 +665,7 @@ const AdminDashboard: React.FC = () => {
                             ) : (
                                 comments.map((comment) => (
                                     <ListItem key={comment.id} alignItems="flex-start">
-                                        <ListItemAvatar>
-                                            <Avatar><CommentIcon /></Avatar>
-                                        </ListItemAvatar>
+                                        <ListItemAvatar><Avatar><CommentIcon /></Avatar></ListItemAvatar>
                                         <ListItemText
                                             primary={<Typography variant="body2" color="textSecondary">{new Date(comment.created_at).toLocaleString()}</Typography>}
                                             secondary={comment.message}
@@ -651,15 +676,9 @@ const AdminDashboard: React.FC = () => {
                         </List>
                     )}
                     <Box sx={{ mt: 2 }}>
-                        <TextField
-                            label="Add a comment"
-                            fullWidth
-                            multiline
-                            rows={3}
-                            value={newComment}
-                            onChange={(e) => setNewComment(e.target.value)}
-                            placeholder="Type your message here..."
-                        />
+                        <TextField label="Add a comment" fullWidth multiline rows={3}
+                            value={newComment} onChange={(e) => setNewComment(e.target.value)}
+                            placeholder="Type your message here..." />
                         <Button variant="contained" onClick={handleAddComment} sx={{ mt: 1 }} disabled={!newComment.trim()}>
                             Post Comment
                         </Button>
@@ -670,7 +689,122 @@ const AdminDashboard: React.FC = () => {
                 </DialogActions>
             </Dialog>
 
-            {/* Snackbar feedback */}
+            {/* ── Aging Report Dialog ── */}
+            <Dialog open={agingDialogOpen} onClose={() => setAgingDialogOpen(false)} maxWidth="sm" fullWidth>
+                <DialogTitle>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <QueryStatsIcon sx={{ color: '#e65100' }} />
+                        <Box>
+                            <Typography variant="h6">Aging Report</Typography>
+                            <Typography variant="body2" color="textSecondary">
+                                Ticket #{selectedTicket?.ticket_number} — {selectedTicket?.title}
+                            </Typography>
+                        </Box>
+                    </Box>
+                </DialogTitle>
+                <DialogContent>
+                    {loadingAging ? (
+                        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress /></Box>
+                    ) : agingDetails ? (
+                        <Box sx={{ mt: 1 }}>
+                            {/* Age summary cards */}
+                            <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
+                                <Card sx={{ flex: '1 1 100px', backgroundColor: '#fff3e0' }}>
+                                    <CardContent sx={{ textAlign: 'center', py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                                        <Typography variant="h4" sx={{ color: '#e65100', fontWeight: 'bold' }}>
+                                            {agingDetails.age_days}
+                                        </Typography>
+                                        <Typography variant="caption" color="textSecondary">Days Old</Typography>
+                                    </CardContent>
+                                </Card>
+                                <Card sx={{ flex: '1 1 100px', backgroundColor: '#fce4ec' }}>
+                                    <CardContent sx={{ textAlign: 'center', py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                                        <Typography variant="h4" sx={{ color: '#c62828', fontWeight: 'bold' }}>
+                                            {agingDetails.age_hours}
+                                        </Typography>
+                                        <Typography variant="caption" color="textSecondary">Total Hours</Typography>
+                                    </CardContent>
+                                </Card>
+                                <Card sx={{ flex: '1 1 100px', backgroundColor: '#e8f5e9' }}>
+                                    <CardContent sx={{ textAlign: 'center', py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                                        <Typography variant="h4" sx={{ color: '#2e7d32', fontWeight: 'bold' }}>
+                                            {agingDetails.sla_remaining_hours ?? '—'}
+                                        </Typography>
+                                        <Typography variant="caption" color="textSecondary">SLA Hours Left</Typography>
+                                    </CardContent>
+                                </Card>
+                            </Box>
+
+                            {/* SLA progress bar */}
+                            {agingDetails.due_date && (
+                                <Box sx={{ mb: 3 }}>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                                        <Typography variant="body2" color="textSecondary">SLA Usage</Typography>
+                                        <Typography variant="body2" fontWeight={500}
+                                            sx={{ color: getSlaColor(agingDetails.sla_status, agingDetails.sla_remaining_hours) }}>
+                                            {getSlaProgress(agingDetails)}%
+                                        </Typography>
+                                    </Box>
+                                    <LinearProgress variant="determinate" value={getSlaProgress(agingDetails)}
+                                        sx={{
+                                            height: 10, borderRadius: 5, backgroundColor: '#e0e0e0',
+                                            '& .MuiLinearProgress-bar': {
+                                                backgroundColor: getSlaColor(agingDetails.sla_status, agingDetails.sla_remaining_hours),
+                                                borderRadius: 5,
+                                            }
+                                        }} />
+                                </Box>
+                            )}
+
+                            <Divider sx={{ mb: 2 }} />
+
+                            {/* Details grid */}
+                            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
+                                {[
+                                    {
+                                        label: 'Status',
+                                        value: <Chip label={agingDetails.status} size="small"
+                                            sx={{ backgroundColor: getStatusColor(agingDetails.status), color: 'white' }} />
+                                    },
+                                    {
+                                        label: 'Priority',
+                                        value: <Chip label={agingDetails.priority} size="small"
+                                            sx={{ backgroundColor: getPriorityColor(agingDetails.priority), color: 'white' }} />
+                                    },
+                                    {
+                                        label: 'SLA Status',
+                                        value: <Chip label={agingDetails.sla_status || 'No SLA'} size="small"
+                                            sx={{ backgroundColor: getSlaColor(agingDetails.sla_status, agingDetails.sla_remaining_hours), color: 'white' }} />
+                                    },
+                                    {
+                                        label: 'Escalated',
+                                        value: <Chip label={agingDetails.is_escalated ? 'Yes' : 'No'} size="small"
+                                            sx={{ backgroundColor: agingDetails.is_escalated ? '#f44336' : '#4caf50', color: 'white' }} />
+                                    },
+                                    { label: 'Created', value: new Date(agingDetails.created_at).toLocaleString() },
+                                    { label: 'Due Date', value: agingDetails.due_date ? new Date(agingDetails.due_date).toLocaleString() : 'N/A' },
+                                ].map(({ label, value }) => (
+                                    <Box key={label} sx={{ backgroundColor: '#f9f9f9', borderRadius: 1, p: 1.5 }}>
+                                        <Typography variant="caption" color="textSecondary" display="block">{label}</Typography>
+                                        {typeof value === 'string'
+                                            ? <Typography variant="body2" fontWeight={500}>{value}</Typography>
+                                            : value}
+                                    </Box>
+                                ))}
+                            </Box>
+                        </Box>
+                    ) : (
+                        <Typography color="textSecondary" sx={{ p: 2, textAlign: 'center' }}>
+                            No aging data available
+                        </Typography>
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setAgingDialogOpen(false)}>Close</Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Snackbar */}
             <Snackbar
                 open={snackbar.open}
                 autoHideDuration={4000}

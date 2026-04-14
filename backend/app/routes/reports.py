@@ -6,7 +6,7 @@ from app.core.dependencies import get_current_user, require_roles
 from app.core.models import Ticket, TicketHistory, User
 from app.schemas.user_schema import UserRole
 
-router = APIRouter(prefix="/reports", tags=["Reports"])
+router = APIRouter(tags=["Reports"])
 
 @router.get("/overdue", dependencies=[Depends(require_roles(UserRole.AGENT, UserRole.ADMIN))])
 def overdue_tickets(
